@@ -1,8 +1,84 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-body { margin: 0; padding: 0; font-family: "Courier New", monospace; }
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: #0a0e17; }
-::-webkit-scrollbar-thumb { background: #1f2937; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #374151; }
+
+@layer base {
+  :root {
+    --color-bg-primary: #0a0e17;
+    --color-bg-secondary: #111827;
+    --color-bg-tertiary: #1f2937;
+    --color-border: #374151;
+    --color-text-primary: #f3f4f6;
+    --color-text-secondary: #9ca3af;
+    --color-green: #22c55e;
+    --color-yellow: #eab308;
+    --color-red: #ef4444;
+    --color-blue: #3b82f6;
+    --color-magenta: #a855f7;
+    --color-cyan: #06b6d4;
+  }
+
+  * {
+    @apply border-military-border;
+  }
+
+  body {
+    @apply bg-military-bg-primary text-military-text-primary font-sans m-0 p-0 antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+@layer components {
+  .panel {
+    @apply bg-military-bg-secondary rounded border border-military-border p-2;
+  }
+
+  .panel-header {
+    @apply text-2xs font-bold text-military-text-secondary uppercase tracking-wider mb-1;
+  }
+
+  .data-text {
+    @apply font-mono text-xs;
+  }
+
+  .status-dot {
+    @apply w-2 h-2 rounded-full;
+  }
+
+  .status-operational {
+    @apply bg-military-green;
+  }
+
+  .status-degraded {
+    @apply bg-military-yellow;
+  }
+
+  .status-critical {
+    @apply bg-military-red;
+  }
+}
+
+@layer utilities {
+  .scrollbar-military {
+    scrollbar-width: thin;
+    scrollbar-color: #374151 #0a0e17;
+  }
+
+  .scrollbar-military::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .scrollbar-military::-webkit-scrollbar-track {
+    background: #0a0e17;
+  }
+
+  .scrollbar-military::-webkit-scrollbar-thumb {
+    background: #1f2937;
+    border-radius: 3px;
+  }
+
+  .scrollbar-military::-webkit-scrollbar-thumb:hover {
+    background: #374151;
+  }
+}

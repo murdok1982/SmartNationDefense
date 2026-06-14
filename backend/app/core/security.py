@@ -1,12 +1,15 @@
 # -*- coding: utf-8 -*-
+import hashlib
 import logging
+import time
 from datetime import datetime, timedelta, timezone
-from typing import Optional, List
+from typing import Optional, List, Tuple, Any
 
 from fastapi import Request, HTTPException, status, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 from passlib.context import CryptContext
+from pydantic import BaseModel
 
 from app.core.config import settings
 
@@ -37,11 +40,16 @@ def create_refresh_token(data: dict) -> str:
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm="HS256")
 
 
-def decode_token(token: str) -> dict:
+def decode_token(token: str, is_refresh: bool = False) -> dict:
     try:
-        return jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
-    except JWTError as e:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Invalid token: {e}")
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+        if is_refresh and payload.get("type") != "refresh":
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token type")
+        if not is_refresh and payload.get("type") != "access":
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token type")
+        return payload
+    except JWTError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token invalido o expirado")
 
 
 async def get_current_user(
@@ -56,9 +64,16 @@ async def get_current_user(
     return payload
 
 
-class ABACEngine:
-    """Attribute-Based Access Control — multi-level security enforcement."""
+CLEARANCE_ORDER = {
+    "OPEN": 0,
+    "RESTRICTED": 1,
+    "CONFIDENTIAL": 2,
+    "SECRET": 3,
+    "TOP_SECRET": 4,
+}
 
+
+class ABACEngine:
     LEVEL_HIERARCHY = {"public": 0, "restricted": 1, "confidential": 2, "secret": 3, "top_secret": 4}
 
     def __init__(self):
@@ -88,12 +103,8 @@ class ABACEngine:
 
 abac = ABACEngine()
 
+
 def require_clearance(min_level: str):
-    """
-    Devuelve una dependencia FastAPI que exige un nivel minimo de clearance.
-    El JWT debe haberse decodificado previamente y haber poblado
-    `request.state.principal` con el payload del token.
-    """
     async def dep(request: Request) -> dict:
         principal = getattr(request.state, "principal", None)
         if principal is None:
@@ -112,9 +123,20 @@ def require_clearance(min_level: str):
     return dep
 
 
-class JWTService:
-    """Servicio JWT con refresh tokens y validación MFA."""
+class TokenPayload(BaseModel):
+    sub: str
+    exp: int
+    iat: int
+    type: str
+    roles: List[str] = []
+    clearance: str = "OPEN"
+    mfa: bool = False
+    jti: Optional[str] = None
+    aud: Optional[str] = None
+    iss: Optional[str] = None
 
+
+class JWTService:
     def __init__(self, secret_key: str, algorithm: str = "HS256",
                  access_expire_min: int = 15, refresh_expire_days: int = 7):
         self.secret_key = secret_key
@@ -129,16 +151,15 @@ class JWTService:
     def create_access_token(
         self,
         subject: str,
-        roles: list[str] = None,
+        roles: Optional[list[str]] = None,
         clearance: str = "OPEN",
-        mfa_verified: bool = False
+        mfa_verified: bool = False,
     ) -> str:
-        """Crea access token (max 15 min según directrices)."""
-        expire = datetime.utcnow() + self.access_expire
+        expire = datetime.now(timezone.utc) + self.access_expire
         payload = {
             "sub": subject,
             "exp": expire,
-            "iat": datetime.utcnow(),
+            "iat": datetime.now(timezone.utc),
             "type": "access",
             "mfa": mfa_verified,
             "roles": roles or [],
@@ -148,84 +169,72 @@ class JWTService:
         }
         return jwt.encode(payload, self.secret_key, self.algorithm)
 
-    def create_refresh_token(self, subject: str, redis_client: redis.Redis) -> str:
-        """Crea refresh token (max 7 días) y lo almacena hasheado en Redis."""
+    def create_refresh_token(self, subject: str, redis_client=None) -> str:
         import uuid as _uuid
-        expire = datetime.utcnow() + self.refresh_expire
+        expire = datetime.now(timezone.utc) + self.refresh_expire
         jti = _uuid.uuid4().hex
         payload = {
             "sub": subject,
             "exp": expire,
-            "iat": datetime.utcnow(),
+            "iat": datetime.now(timezone.utc),
             "type": "refresh",
             "aud": "sesis-c2",
             "iss": "sesis-auth-server",
             "jti": jti,
         }
         token = jwt.encode(payload, self.secret_key, self.algorithm)
-        # Almacenar SHA-256 del token (no el token íntegro) — CRITICAL HIGH.
-        redis_key = f"refresh:{subject}"
-        redis_client.setex(redis_key, self.refresh_expire, self._hash_token(token))
+        if redis_client:
+            redis_key = f"refresh:{subject}"
+            redis_client.setex(redis_key, int(self.refresh_expire.total_seconds()), self._hash_token(token))
         return token
 
     def decode_token(self, token: str) -> TokenPayload:
-        """Decodifica y valida un JWT token verificando claims estrictos."""
         try:
             payload = jwt.decode(
                 token,
                 self.secret_key,
                 algorithms=[self.algorithm],
-                audience="sesis-c2",
-                issuer="sesis-auth-server"
+                options={"verify_aud": False, "verify_iss": False}
             )
             return TokenPayload(**payload)
-        except JWTError as e:
+        except JWTError:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=f"Token inválido: {str(e)}"
+                detail="Token invalido o expirado"
             )
 
-    def verify_refresh_token(self, token: str, redis_client: redis.Redis) -> TokenPayload:
-        """
-        Verifica refresh token contra Redis (revocación) y rota: revoca el actual
-        añadiendo su jti al blacklist con TTL = remaining lifetime.
-        """
+    def verify_refresh_token(self, token: str, redis_client=None) -> TokenPayload:
         payload = self.decode_token(token)
         if payload.type != "refresh":
             raise HTTPException(status_code=400, detail="No es un refresh token")
 
-        # Comprobar blacklist (jti revocado).
-        if payload.jti and redis_client.exists(f"revoked:{payload.jti}"):
-            raise HTTPException(status_code=401, detail="Refresh token revocado")
+        if redis_client:
+            if payload.jti and redis_client.exists(f"revoked:{payload.jti}"):
+                raise HTTPException(status_code=401, detail="Refresh token revocado")
 
-        redis_key = f"refresh:{payload.sub}"
-        stored = redis_client.get(redis_key)
-        if not stored:
-            raise HTTPException(status_code=401, detail="Refresh token revocado o inválido")
-        stored_str = stored.decode() if isinstance(stored, (bytes, bytearray)) else stored
-        if stored_str != self._hash_token(token):
-            raise HTTPException(status_code=401, detail="Refresh token revocado o inválido")
+            redis_key = f"refresh:{payload.sub}"
+            stored = redis_client.get(redis_key)
+            if not stored:
+                raise HTTPException(status_code=401, detail="Refresh token revocado o invalido")
+            stored_str = stored.decode() if isinstance(stored, (bytes, bytearray)) else stored
+            if stored_str != self._hash_token(token):
+                raise HTTPException(status_code=401, detail="Refresh token revocado o invalido")
 
-        # Revocación rotativa: marcar jti del token consumido como revocado por el resto de su vida.
-        if payload.jti:
-            remaining = max(1, payload.exp - int(time.time()))
-            redis_client.setex(f"revoked:{payload.jti}", remaining, "1")
-        # Limpiar la entrada de refresh actual para forzar reemisión.
-        redis_client.delete(redis_key)
+            if payload.jti:
+                remaining = max(1, payload.exp - int(time.time()))
+                redis_client.setex(f"revoked:{payload.jti}", remaining, "1")
+            redis_client.delete(redis_key)
 
         return payload
 
     def rotate_tokens(
         self,
         token: str,
-        redis_client: redis.Redis,
+        redis_client=None,
         roles: Optional[list[str]] = None,
         clearance: str = "OPEN",
         mfa_verified: bool = False,
     ) -> Tuple[str, str]:
-        """
-        Verifica el refresh token, lo revoca y emite un nuevo par (access, refresh).
-        """
         payload = self.verify_refresh_token(token, redis_client)
         new_access = self.create_access_token(
             subject=payload.sub,
@@ -236,6 +245,6 @@ class JWTService:
         new_refresh = self.create_refresh_token(payload.sub, redis_client)
         return new_access, new_refresh
 
-    def revoke_refresh_token(self, subject: str, redis_client: redis.Redis) -> None:
-        """Revoca refresh token (logout)."""
-        redis_client.delete(f"refresh:{subject}")
+    def revoke_refresh_token(self, subject: str, redis_client=None) -> None:
+        if redis_client:
+            redis_client.delete(f"refresh:{subject}")

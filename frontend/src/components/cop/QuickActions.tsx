@@ -1,18 +1,28 @@
+"use client";
+import { FileText, Target, Crosshair, Radio } from "lucide-react";
+
+const actions = [
+  { label: "Generar OPORD", icon: FileText, color: "text-green-400 border-green-700 hover:bg-green-900/30" },
+  { label: "Simular COA", icon: Target, color: "text-blue-400 border-blue-700 hover:bg-blue-900/30" },
+  { label: "Evaluar BDA", icon: Crosshair, color: "text-orange-400 border-orange-700 hover:bg-orange-900/30" },
+  { label: "Alerta Maxima", icon: Radio, color: "text-red-400 border-red-700 hover:bg-red-900/30" },
+];
+
 export default function QuickActions() {
-  const actions = [
-    { label: "OPORD", icon: "O", desc: "Generate OPORD" },
-    { label: "COA", icon: "W", desc: "Run COA Sim" },
-    { label: "BDA", icon: "B", desc: "Request BDA" },
-    { label: "TASK", icon: "T", desc: "New Task" },
-  ];
   return (
     <div className="flex gap-2">
-      {actions.map(a => (
-        <button key={a.label}
-          className="bg-gray-800 hover:bg-gray-700 text-green-400 text-xs font-mono px-3 py-1.5 rounded border border-gray-600">
-          [{a.icon}] {a.desc}
-        </button>
-      ))}
+      {actions.map((a) => {
+        const Icon = a.icon;
+        return (
+          <button
+            key={a.label}
+            className={`flex items-center gap-1.5 bg-gray-800 text-xs font-mono px-3 py-1.5 rounded border ${a.color} transition-colors`}
+          >
+            <Icon size={14} />
+            {a.label}
+          </button>
+        );
+      })}
     </div>
   );
 }

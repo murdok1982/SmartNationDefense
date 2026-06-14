@@ -9,7 +9,7 @@
   <img src="https://img.shields.io/badge/Security-Zero_Trust-e94560?style=for-the-badge&logo=lock" alt="Zero Trust">
   <img src="https://img.shields.io/badge/LLM-fsociety-3498db?style=for-the-badge&logo=openai" alt="fsociety">
   <img src="https://img.shields.io/badge/Architecture-C4ISR-9b59b6?style=for-the-badge&logo=apachekafka" alt="C4ISR">
-  <img src="https://img.shields.io/badge/Modules-9_Integrated-3ddc84?style=for-the-badge" alt="Modules">
+  <img src="https://img.shields.io/badge/Modules-19_Integrated-3ddc84?style=for-the-badge" alt="Modules">
   <img src="https://img.shields.io/badge/License-MIT-eab308?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/Files-274-0a0e17?style=for-the-badge" alt="Files">
 </p>
@@ -178,19 +178,98 @@ Satélite detecta blindados en X
 ### 8. sesis-ml (Machine Learning)
 | Componente | Función |
 |-----------|---------|
-| `isolation_forest.py` | Detección de anomalías en telemetría |
+| `isolation_forest.py` | Deteccion de anomalias en telemetria |
 | `vision.py` | Inferencia YOLOv8 en memoria |
-| `correlation_engine.py` | Motor de correlación multi-fuente con reglas |
-| `rules/` | Reglas de correlación (threat, deployment, etc.) |
+| `correlation_engine.py` | Motor de correlacion multi-fuente con reglas |
+| `rules/` | Reglas de correlacion (threat, deployment, etc.) |
 
-### 9. sesis-mobile (COP Móvil)
-| Componente | Función |
+### 9. sesis-mobile (COP Movil)
+| Componente | Funcion |
 |-----------|---------|
-| `main.dart` | App Flutter con tema táctico oscuro |
+| `main.dart` | App Flutter con tema tactico oscuro |
 | `mesh_service.dart` | Mesh networking P2P offline-first |
-| `mesh_protocol.dart` | Protocolo de mensajería cifrada y firmada |
+| `mesh_protocol.dart` | Protocolo de mensajeria cifrada y firmada |
 | `api_client.dart` | Cliente HTTP con certificate pinning |
 | `theme/` | Paleta militar oscura |
+
+### 10. sesis-messaging (Mensajeria Tactica con QoS Militar)
+| Servicio | Funcion |
+|----------|---------|
+| `messaging/service.py` | Cola de mensajes con prioridades CRITICAL/FLASH/IMMEDIATE/PRIORITY/ROUTINE |
+| | Cifrado E2E + firma digital + clasificacion STANAG |
+| | Threads, acks, TTL, broadcast y QoS militar |
+
+### 11. sesis-fusion (Motor de Fusion JDL Level 2)
+| Servicio | Funcion |
+|----------|---------|
+| `fusion/jdl_fusion.py` | Situation assessment segun modelo JDL Level 2 |
+| | Evaluacion de amenazas, relaciones entre entidades, intenciones enemigas |
+| | Generacion de Common Tactical Picture (CTP) consolidada |
+
+### 12. sesis-terrain (Analisis de Terreno Avanzado)
+| Servicio | Funcion |
+|----------|---------|
+| `terrain/service.py` | Line of Sight (LOS) con perfil de elevacion |
+| | Route planning por tipo de vehiculo (infanteria, blindado, aeronave) |
+| | Analisis de terreno, deteccion de obstaculos, consulta de elevacion |
+
+### 13. sesis-logistics (Gestion Logistica Militar)
+| Servicio | Funcion |
+|----------|---------|
+| `logistics/service.py` | Gestion de suministros (solicitudes, entregas, stock) |
+| | Control de personal (estado, ubicacion, rol, status medico) |
+| | MEDEVAC 9-line con urgencia y coordenadas |
+| | Mantenimiento de equipo con prioridades y piezas |
+
+### 14. sesis-aar (After Action Review)
+| Servicio | Funcion |
+|----------|---------|
+| `aar/service.py` | Creacion y gestion de AAR por operacion |
+| | Timeline de eventos con actores, ubicaciones y resultados |
+| | Lecciones aprendidas (sostener/mejorar) con prioridades |
+| | Replay de operacion y finalizacion con metricas de rendimiento |
+
+### 15. sesis-reports (Automated Reporting)
+| Servicio | Funcion |
+|----------|---------|
+| `reports/service.py` | Generacion de SITREP (reporte de situacion) |
+| | Generacion de SPOTREP (reporte de avistamiento) |
+| | Generacion de SALUTE (Size, Activity, Location, Unit, Time, Equipment) |
+| | Generacion de reporte MEDEVAC con formato estandar NATO |
+
+### 16. sesis-prediction (Prediccion de Amenazas con ML)
+| Servicio | Funcion |
+|----------|---------|
+| `prediction/threat_prediction.py` | Prediccion de movimiento de unidades hostiles |
+| | Deteccion de anomalias en eventos tacticos |
+| | Analisis de patron de vida (Pattern of Life) |
+| | Sistema de alerta temprana con radio de amenaza |
+
+### 17. sesis-mapping (Mapa Tactico Mejorado)
+| Servicio | Funcion |
+|----------|---------|
+| `mapping/tactical_map.py` | Multi-layer overlays con GeoJSON y estilos |
+| | Tracking de unidades con historial de posiciones |
+| | Calculo de zonas de engagement por sistema de armas |
+| | Calculo de rango de comunicaciones (VHF/UHF/HF) |
+| | Estado de mapa consolidado 3D-ready |
+
+### 18. sesis-voice (Voice Command Integration)
+| Servicio | Funcion |
+|----------|---------|
+| `voice/service.py` | Procesamiento de comandos de voz y texto |
+| | Soporte multi-idioma (ES/EN) con NLU militar |
+| | Entrenamiento de modelo de voz con muestras |
+| | Integracion con todos los modulos via comandos naturales |
+
+### 19. sesis-planning (Planificacion de Operaciones NATO Mejorada)
+| Servicio | Funcion |
+|----------|---------|
+| `planning/opord_enhanced.py` | OPORD 5 parrafos doctrina NATO (situacion, mision, ejecucion, sostenimiento, mando) |
+| | Gestion de anexos, aprobacion por comandante, distribucion |
+| | Generacion de FRAGORD (orden fragmentaria) |
+| | Comparacion de COAs, evaluacion de riesgos, matriz de sincronizacion |
+| | Validacion de completitud de OPORD |
 
 ---
 
@@ -384,6 +463,76 @@ curl -X POST http://localhost:8000/api/v1/agents/intel/reports \
   -d '{"title": "Avistamiento en sector 7", "body": "Columna blindada en movimiento...", "classification": "secret"}'
 ```
 
+#### Nuevos Modulos Militares
+
+```bash
+# Mensajeria Tactica — Enviar mensaje con QoS
+curl -X POST http://localhost:8000/api/v1/messaging/send \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"recipient_ids": ["UNIT-ALPHA"], "message_type": "ORDER", "priority": "FLASH", "content": "Mover a posicion BRAVO", "classification": "SECRET"}'
+
+# Fusion JDL — Evaluar amenazas
+curl -X POST http://localhost:8000/api/v1/fusion/assess-threats \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"events": [{"source": "SAT", "type": "detection", "lat": 42.5, "lon": 2.3, "entity_type": "armor"}]}'
+
+# Terreno — Line of Sight
+curl -X POST http://localhost:8000/api/v1/terrain/line-of-sight \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"observer": {"lat": 42.5, "lon": 2.3}, "target": {"lat": 42.6, "lon": 2.4}, "observer_height_m": 10.0, "target_height_m": 2.0}'
+
+# Logistica — Solicitar suministro
+curl -X POST http://localhost:8000/api/v1/logistics/request \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"supply_type": "AMMUNITION", "quantity": 500, "unit": "rounds", "delivery_location": {"lat": 42.5, "lon": 2.3}, "priority": "HIGH"}'
+
+# Logistica — MEDEVAC 9-line
+curl -X POST http://localhost:8000/api/v1/logistics/medevac \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"casualty_id": "CAS-001", "location": {"lat": 42.5, "lon": 2.3}, "urgency": "URGENT", "casualty_count": 2, "security": "N"}'
+
+# AAR — Crear After Action Review
+curl -X POST http://localhost:8000/api/v1/aar/create \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"operation_id": "OP-ALPHA", "operation_name": "Operacion Amanecer", "start_time": "2026-06-14T06:00:00Z", "participants": ["UNIT-ALPHA", "UNIT-BRAVO"]}'
+
+# Reports — Generar SITREP
+curl -X POST http://localhost:8000/api/v1/reports/sitrep \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"from_unit": "BN-1", "to_unit": "BDE-HQ", "enemy_forces": "2 companias mecanizadas al NE", "friendly_forces": "Batallon reforzado en posiciones defensivas"}'
+
+# Prediction — Predecir movimiento hostil
+curl -X POST http://localhost:8000/api/v1/prediction/predict-movement \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"id": "HOSTILE-001", "lat": 42.5, "lon": 2.3, "speed": 30.0, "heading": 180.0, "time_horizon_min": 120}'
+
+# Mapa Tactico — Agregar overlay
+curl -X POST http://localhost:8000/api/v1/map/overlay \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Zona de Amenaza Alpha", "layer_type": "THREAT", "geojson": {"type": "Feature", "geometry": {"type": "Polygon", "coordinates": [[[42.5,2.3],[42.6,2.3],[42.6,2.4],[42.5,2.4],[42.5,2.3]]]}}}'
+
+# Voice — Comando de voz
+curl -X POST http://localhost:8000/api/v1/voice/command \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"text_command": "Generar SITREP para batallon", "language": "es", "user_id": "OPERATOR-01"}'
+
+# Planning — Crear OPORD NATO 5 parrafos
+curl -X POST http://localhost:8000/api/v1/planning/create \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"operation_name": "Operacion Trueno", "classification": "SECRET", "paragraph_1_situation": {"enemy": "2 coy mecanizadas", "friendly": "Bn infanteria reforzado"}, "paragraph_2_mission": {"task": "Asegurar puente en 42.5N 2.3E"}, "paragraph_3_execution": {"concept": "Ataque de pinzas"}, "paragraph_4_sustainment": {"supply": "Clase V y III"}, "paragraph_5_command_signal": {"command_post": "CP tactico en BRAVO"}}'
+```
+
 ### Frontend COP
 
 La interfaz web unificada muestra en una sola pantalla:
@@ -430,24 +579,34 @@ Características:
 
 ### Endpoints Disponibles
 
-| Prefijo | Módulo | Descripción | Documentación |
+| Prefijo | Modulo | Descripcion | Documentacion |
 |---------|--------|-------------|---------------|
 | `/api/v1/health` | Core | Health check | `/docs` |
-| `/api/v1/auth` | Core | Autenticación JWT + MFA | `/docs` |
-| `/api/v1/c2` | C2 | Mando y control táctico | `/docs` |
+| `/api/v1/auth` | Core | Autenticacion JWT + MFA | `/docs` |
+| `/api/v1/c2` | C2 | Mando y control tactico | `/docs` |
 | `/api/v2/*` | C2 | Operaciones multidominio | `/docs` |
 | `/api/v1/satellite` | AEGIS | Inteligencia satelital | `/docs` |
 | `/api/v1/osint` | Atalaya | OSINT multi-fuente | `/docs` |
-| `/api/v1/intel` | Global | Análisis de inteligencia | `/docs` |
-| `/api/v1/agents` | SpyMgr | Gestión de agentes | `/docs` |
-| `/api/v1/tactical/opord` | Tactical | Generación de OPORD | `/docs` |
-| `/api/v1/tactical/wargaming` | Tactical | Simulación COA | `/docs` |
-| `/api/v1/tactical/fires` | Tactical | Coordinación de fuegos | `/docs` |
-| `/api/v1/tactical/bda` | Tactical | Evaluación de daños | `/docs` |
-| `/api/v1/tactical/psyops` | Tactical | Operaciones psicológicas | `/docs` |
+| `/api/v1/intel` | Global | Analisis de inteligencia | `/docs` |
+| `/api/v1/agents` | SpyMgr | Gestion de agentes | `/docs` |
+| `/api/v1/tactical/opord` | Tactical | Generacion de OPORD | `/docs` |
+| `/api/v1/tactical/wargaming` | Tactical | Simulacion COA | `/docs` |
+| `/api/v1/tactical/fires` | Tactical | Coordinacion de fuegos | `/docs` |
+| `/api/v1/tactical/bda` | Tactical | Evaluacion de danos | `/docs` |
+| `/api/v1/tactical/psyops` | Tactical | Operaciones psicologicas | `/docs` |
 | `/api/v1/agents/sensors` | Sensors | IoT sensor mesh | `/docs` |
+| `/api/v1/messaging` | Messaging | Mensajeria tactica QoS militar (6 endpoints) | `/docs` |
+| `/api/v1/fusion` | Fusion | Motor fusion JDL Level 2 (4 endpoints) | `/docs` |
+| `/api/v1/terrain` | Terrain | Analisis de terreno avanzado (5 endpoints) | `/docs` |
+| `/api/v1/logistics` | Logistics | Gestion logistica militar (7 endpoints) | `/docs` |
+| `/api/v1/aar` | AAR | After Action Review (6 endpoints) | `/docs` |
+| `/api/v1/reports` | Reports | Automated reporting NATO (6 endpoints) | `/docs` |
+| `/api/v1/prediction` | Prediction | Prediccion de amenazas ML (4 endpoints) | `/docs` |
+| `/api/v1/map` | Mapping | Mapa tactico multi-layer (9 endpoints) | `/docs` |
+| `/api/v1/voice` | Voice | Comandos de voz (3 endpoints) | `/docs` |
+| `/api/v1/planning` | Planning | Planificacion OPORD NATO mejorada (11 endpoints) | `/docs` |
 
-Documentación interactiva: `http://localhost:8000/docs` (Swagger UI)
+Documentacion interactiva: `http://localhost:8000/docs` (Swagger UI)
 
 ---
 
@@ -516,6 +675,66 @@ Documentación interactiva: `http://localhost:8000/docs` (Swagger UI)
 6. **Consolidated BDA** genera reporte multi-fuente
 
 **Resultado:** Coordinación segura con deconflicto automático.
+
+### CASO 5: Fusion JDL Level 2 — Evaluacion de Situacion
+
+**Escenario:** Multiples fuentes reportan actividad enemiga. Se necesita una picture consolidada.
+
+**Flujo:**
+1. **Fusion Engine** recibe eventos de satelite, OSINT, sensores y agentes
+2. **Assess Threats** clasifica entidades en hostiles, propias y neutrales
+3. **Relationships** identifica vinculos entre entidades (mando, apoyo, subordinacion)
+4. **Intentions** predice intenciones enemigas con indicadores y cursos de accion
+5. **CTP** genera Common Tactical Picture consolidada
+6. **C2** actualiza dashboard con threat zones y acciones recomendadas
+
+**Resultado:** Situacion táctica evaluada en segundos con confianza cuantificada.
+
+### CASO 6: Planificacion Completa de Operacion NATO
+
+**Escenario:** Un comandante necesita planificar, aprobar y distribuir una operacion.
+
+**Flujo:**
+1. **Planning** crea OPORD con 5 parrafos NATO (situacion, mision, ejecucion, sostenimiento, mando)
+2. **Annexes** anade anexos (logistico, comunicaciones, inteligencia, fuego)
+3. **COA Compare** compara multiples cursos de accion con scoring
+4. **Risk Assessment** evalua riesgos por categoria
+5. **Sync Matrix** genera matriz de sincronizacion
+6. **Validate** verifica completitud de la OPORD
+7. **Approve** comandante aprueba la orden
+8. **Distribute** distribuye a unidades via mensajeria tactica
+9. **FRAGORD** genera orden fragmentaria para cambios rapidos
+
+**Resultado:** Ciclo completo de planificacion NATO con trazabilidad.
+
+### CASO 7: Logistica y MEDEVAC en Combate
+
+**Escenario:** Unidad en contacto necesita suministros y evacuacion de heridos.
+
+**Flujo:**
+1. **Logistics** registra solicitud de suministros con prioridad y ubicacion
+2. **MEDEVAC** genera 9-line MEDEVAC con urgencia, coordenadas y equipo necesario
+3. **Personnel** actualiza estado de personal (KIA, WIA, MIA)
+4. **Reports** genera SPOTREP del contacto y SITREP de la situacion
+5. **Messaging** envia solicitudes a unidades de apoyo con QoS FLASH
+6. **Map** calcula ruta de evacuacion evitando obstaculos y zonas de amenaza
+7. **AAR** registra toda la operacion para revision posterior
+
+**Resultado:** Respuesta logistica coordinada con MEDEVAC trazado.
+
+### CASO 8: Comando por Voz y Mapa Tactico
+
+**Escenario:** Operador en campo usa comandos de voz para interactuar con el sistema.
+
+**Flujo:**
+1. **Voice** recibe comando "Marcar contacto hostil en coordenadas 42.5N 2.3E"
+2. **Voice NLU** parsea intencion y extrae parametros (coordenadas, tipo)
+3. **Map** anade overlay con marca hostil en coordenadas indicadas
+4. **Prediction** analiza patron de movimiento y predice posicion futura
+5. **Terrain** calcula linea de vision desde posicion propia al contacto
+6. **Messaging** envia alerta a unidades cercanas con datos del contacto
+
+**Resultado:** Interaccion manos-libres en entorno tactico hostil.
 
 ---
 
@@ -632,8 +851,31 @@ SESIS-FEDERATION/
 ├── backend/                    # Backend FastAPI + Celery
 │   ├── app/
 │   │   ├── core/            # Nucleo unificado (config, security, audit, pipeline, llm)
-│   │   ├── api/              # Routers REST (v1, v2, satellite, osint, intel, agents, tactical)
+│   │   ├── api/              # Routers REST
+│   │   │   ├── v1/          # messaging, fusion, terrain, logistics, aar, reports, prediction, map, voice, planning
+│   │   │   ├── v2/          # Operaciones multidominio (border, c2, cyber, ew, logistics, space)
+│   │   │   ├── tactical/    # opord, wargaming, joint_fires, bda, psyops
+│   │   │   ├── satellite/   # Inteligencia satelital
+│   │   │   ├── osint/       # OSINT multi-fuente
+│   │   │   ├── intel/       # Analisis de inteligencia
+│   │   │   └── agents/      # Gestion de agentes
 │   │   ├── services/         # Logica de negocio (por modulo)
+│   │   │   ├── messaging/   # Mensajeria tactica con QoS militar
+│   │   │   ├── fusion/      # Motor de fusion JDL Level 2
+│   │   │   ├── terrain/     # Analisis de terreno (LOS, route planning)
+│   │   │   ├── logistics/   # Gestion logistica (suministros, personal, MEDEVAC)
+│   │   │   ├── aar/         # After Action Review
+│   │   │   ├── reports/     # Automated reporting (SITREP, SPOTREP, SALUTE, MEDEVAC)
+│   │   │   ├── prediction/  # Prediccion de amenazas con ML
+│   │   │   ├── mapping/     # Mapa tactico multi-layer 3D-ready
+│   │   │   ├── voice/       # Voice command integration
+│   │   │   ├── planning/    # Planificacion OPORD NATO mejorada
+│   │   │   ├── tactical/    # Operaciones tacticas (opord, wargaming, fires, bda, psyops)
+│   │   │   ├── satellite/   # Inteligencia satelital
+│   │   │   ├── osint/       # OSINT multi-disciplina
+│   │   │   ├── intel/       # Analisis de inteligencia
+│   │   │   ├── agents/      # Gestion de agentes
+│   │   │   └── compliance/  # Reporter de cumplimiento
 │   │   ├── agents/           # Agentes de inteligencia
 │   │   ├── db/               # Modelos + sesion + migraciones
 │   │   └── schemas/          # Pydantic schemas
@@ -658,7 +900,7 @@ MIT License — ver [LICENSE](LICENSE).
 ---
 
 <div align="center">
-  <sub>SESIS-FEDERATION v1.0 — 274 archivos · 9 módulos · 5 repos fusionados</sub>
+  <sub>SESIS-FEDERATION v1.0 — 19 modulos integrados · 5 repos fusionados · 61+ endpoints API</sub>
   <br>
   <sub>Construido con ❤️ sobre fsociety, FastAPI, Next.js y Flutter</sub>
 </div>

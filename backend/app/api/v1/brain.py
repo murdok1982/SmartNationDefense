@@ -75,7 +75,7 @@ def _check_rate_limit(operator_id: str, limit: int = 20, window_seconds: int = 6
     Raises HTTP 429 if the operator exceeds `limit` calls in `window_seconds`.
     In production, replace with Redis-backed counter.
     """
-    now = datetime.datetime.utcnow()
+    now = datetime.datetime.now(datetime.timezone.utc)
     cutoff = now - datetime.timedelta(seconds=window_seconds)
     
     # Limpieza global para evitar memory leak (CWE-400)
@@ -191,7 +191,7 @@ async def brain_query(
     return {
         "response": response,
         "model": settings.OLLAMA_MODEL,
-        "timestamp": datetime.datetime.utcnow().isoformat(),
+        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
     }
 
 
@@ -219,7 +219,7 @@ async def analyze_threat(
     return {
         "analysis": result,
         "model": settings.OLLAMA_MODEL,
-        "timestamp": datetime.datetime.utcnow().isoformat(),
+        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
     }
 
 
@@ -249,7 +249,7 @@ async def generate_coa(
     return {
         "coa": result,
         "model": settings.OLLAMA_MODEL,
-        "timestamp": datetime.datetime.utcnow().isoformat(),
+        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
     }
 
 
@@ -314,5 +314,5 @@ async def strategic_briefing(
         "events_analysed": len(events_data),
         "alerts_analysed": len(alerts_data),
         "model": settings.OLLAMA_MODEL,
-        "timestamp": datetime.datetime.utcnow().isoformat(),
+        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
     }

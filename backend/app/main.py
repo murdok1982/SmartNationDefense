@@ -1,8 +1,4 @@
 # -*- coding: utf-8 -*-
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
 import asyncio
 import logging
 from contextlib import asynccontextmanager
@@ -13,10 +9,9 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 
 from app.core.config import settings, get_settings
 from app.db.session import engine, check_db_connected
-from app.core.events import EventBus
+from app.core.events import event_bus
 
 logger = logging.getLogger(__name__)
-event_bus = EventBus()
 
 
 @asynccontextmanager
@@ -74,8 +69,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
+    allow_headers=["Authorization", "Content-Type", "X-API-Key"],
 )
 
 if settings.ENVIRONMENT == "production":
@@ -147,6 +142,46 @@ app.include_router(sensor_mesh_api.router, prefix="/api/v1/agents/sensors", tags
 # sesis-auth (unified)
 from app.api.auth import router as auth_router
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["Auth"])
+
+# sesis-messaging (Mensajeria Tactica)
+from app.api.v1 import messaging
+app.include_router(messaging.router, prefix="/api/v1/messaging", tags=["Messaging"])
+
+# sesis-terrain (Analisis de Terreno)
+from app.api.v1 import terrain
+app.include_router(terrain.router, prefix="/api/v1/terrain", tags=["Terrain"])
+
+# sesis-logistics-v1 (Logistica Militar)
+from app.api.v1 import logistics as logistics_v1
+app.include_router(logistics_v1.router, prefix="/api/v1/logistics", tags=["Logistics v1"])
+
+# sesis-aar (After Action Review)
+from app.api.v1 import aar
+app.include_router(aar.router, prefix="/api/v1/aar", tags=["AAR"])
+
+# sesis-reports (Reportes Automaticos)
+from app.api.v1 import reports
+app.include_router(reports.router, prefix="/api/v1/reports", tags=["Reports"])
+
+# sesis-fusion (Fusion JDL Level 2)
+from app.api.v1 import fusion
+app.include_router(fusion.router, prefix="/api/v1/fusion", tags=["Fusion"])
+
+# sesis-prediction (Prediccion de Amenazas)
+from app.api.v1 import prediction
+app.include_router(prediction.router, prefix="/api/v1/prediction", tags=["Prediction"])
+
+# sesis-map (Mapa Tactico)
+from app.api.v1 import map as tactical_map
+app.include_router(tactical_map.router, prefix="/api/v1/map", tags=["Tactical Map"])
+
+# sesis-voice (Comandos de Voz)
+from app.api.v1 import voice
+app.include_router(voice.router, prefix="/api/v1/voice", tags=["Voice"])
+
+# sesis-planning (Planificacion NATO Mejorada)
+from app.api.v1 import planning
+app.include_router(planning.router, prefix="/api/v1/planning", tags=["Planning"])
 
 
 @app.get("/")

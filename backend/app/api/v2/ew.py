@@ -54,25 +54,19 @@ async def report_rf_scan(
     db: AsyncSession = Depends(get_db),
     principal: dict = Depends(require_clearance("SECRET")),
 ):
-    """Reporte de escaneo del espectro RF."""
-    from geoalchemy2.elements import WKTElement
-    position = None
-    if payload.lat is not None and payload.lon is not None:
-        position = WKTElement(f"POINT({payload.lon} {payload.lat})", srid=4326)
-
     event = ElectronicWarfareEvent(
         id=str(uuid.uuid4()),
         event_type=payload.event_type.value,
         frequency_mhz=payload.frequency_mhz,
         bandwidth_mhz=payload.bandwidth_mhz,
         signal_strength=payload.signal_strength,
-        position=position,
+        lat=payload.lat,
+        lon=payload.lon,
         classification_level=payload.classification,
         timestamp=datetime.utcnow()
     )
     db.add(event)
 
-    # Event Sourcing
     store_event = EventStore(
         aggregate_id=event.id,
         aggregate_type="EWEvent",
@@ -97,8 +91,6 @@ async def list_rf_scans(
     db: AsyncSession = Depends(get_db),
     principal: dict = Depends(require_clearance("SECRET")),
 ):
-    """Lista escaneos RF registrados."""
-    from geoalchemy2.shape import to_shape
     query = select(ElectronicWarfareEvent)
     if event_type:
         query = query.where(ElectronicWarfareEvent.event_type == event_type)
@@ -117,7 +109,7 @@ async def list_rf_scans(
             "frequency_mhz": e.frequency_mhz,
             "bandwidth_mhz": e.bandwidth_mhz,
             "signal_strength": e.signal_strength,
-            "position": to_shape(e.position).wkt if e.position is not None else None,
+            "position": f"POINT({e.lon} {e.lat})" if e.lat is not None and e.lon is not None else None,
             "timestamp": e.timestamp,
             "classification": e.classification_level
         } for e in events
@@ -168,9 +160,6 @@ async def get_threat_emitters(
     db: AsyncSession = Depends(get_db),
     principal: dict = Depends(require_clearance("SECRET")),
 ):
-    """Identifica emisores hostiles basado en patrones."""
-    from geoalchemy2.shape import to_shape
-    # Análisis simplificado: frecuencias con múltiples reportes
     query = select(ElectronicWarfareEvent).where(
         ElectronicWarfareEvent.event_type.in_(["SIGINT", "ELINT"])
     ).order_by(ElectronicWarfareEvent.frequency_mhz)
@@ -178,7 +167,6 @@ async def get_threat_emitters(
     result = await db.execute(query)
     events = result.scalars().all()
 
-    # Agrupar por frecuencia
     freq_map = {}
     for e in events:
         freq = e.frequency_mhz
@@ -186,10 +174,9 @@ async def get_threat_emitters(
             freq_map[freq] = {"count": 0, "types": set(), "positions": []}
         freq_map[freq]["count"] += 1
         freq_map[freq]["types"].add(e.event_type)
-        if e.position is not None:
-            freq_map[freq]["positions"].append(to_shape(e.position).wkt)
+        if e.lat is not None and e.lon is not None:
+            freq_map[freq]["positions"].append(f"POINT({e.lon} {e.lat})")
 
-    # Identificar amenazas (frecuencias con >3 reportes)
     threats = []
     for freq, data in freq_map.items():
         if data["count"] >= 3:

@@ -1,37 +1,33 @@
-"""
-Modelos expandidos para SESIS v3.0 — C2, EW, Cyber, Logistics, Space.
-Incluye cifrado AES-256-GCM en campos sensibles.
-"""
-from sqlalchemy import Column, String, DateTime, Float, JSON, ForeignKey, Integer, Boolean, Text, Enum
-from sqlalchemy.orm import relationship, declarative_base
-from geoalchemy2 import Geography
+# -*- coding: utf-8 -*-
 import datetime
+import hashlib
+import json
+import logging
 import uuid
-from typing import Optional
-from app.core.crypto import AESCipher
+from typing import Optional, Dict, Any
+
+from sqlalchemy import Column, String, DateTime, Float, JSON, ForeignKey, Integer, Boolean, Text, func
+from sqlalchemy.orm import declarative_base
+
 from app.core.config import settings
 
+logger = logging.getLogger(__name__)
 Base = declarative_base()
 
-# ─── Sensitive Data Wrapper ────────────────────────────────────────────────
 
-_cipher = None
-
-
-def _get_cipher() -> AESCipher:
-    global _cipher
-    if _cipher is None:
+def _get_cipher():
+    try:
         from app.core.crypto import AESCipher
-        _cipher = AESCipher.from_hex(settings.AES_KEY)
-    return _cipher
+        return AESCipher.from_hex(settings.AES_KEY)
+    except Exception:
+        return None
 
 
 class EncryptedField:
-    """Descriptor para campos cifrados automáticamente."""
-
     def __init__(self, column_name: str):
         self.column_name = column_name
         self._cache = {}
+        self._weak_refs = {}
 
     def __get__(self, obj, objtype=None):
         if obj is None:
@@ -39,27 +35,33 @@ class EncryptedField:
         encrypted = getattr(obj, self.column_name, None)
         if not encrypted:
             return {}
-        # Cache para evitar descifrado repetido en misma instancia
-        obj_id = id(obj)
-        if obj_id not in self._cache:
+        cache_key = self._make_cache_key(obj, encrypted)
+        if cache_key not in self._cache:
             try:
-                self._cache[obj_id] = _get_cipher().decrypt(encrypted)
+                cipher = _get_cipher()
+                if cipher:
+                    self._cache[cache_key] = cipher.decrypt(encrypted)
+                else:
+                    return {}
             except Exception:
                 return {}
-        return self._cache[obj_id]
+        return self._cache[cache_key]
 
     def __set__(self, obj, value: dict):
         if not isinstance(value, dict):
             raise ValueError("EncryptedField solo acepta dict/JSON")
-        encrypted = _get_cipher().encrypt(value)
-        setattr(obj, self.column_name, encrypted)
-        # Limpiar cache
-        obj_id = id(obj)
-        if obj_id in self._cache:
-            del self._cache[obj_id]
+        cipher = _get_cipher()
+        if cipher:
+            encrypted = cipher.encrypt(value)
+            setattr(obj, self.column_name, encrypted)
+        cache_key = self._make_cache_key(obj, getattr(obj, self.column_name, ""))
+        if cache_key in self._cache:
+            del self._cache[cache_key]
 
+    @staticmethod
+    def _make_cache_key(obj, encrypted_value: str) -> int:
+        return hash((id(obj), hashlib.sha256(encrypted_value.encode()).hexdigest()[:16]))
 
-# ─── Modelos Base (legacy) ────────────────────────────────────────────────
 
 class Asset(Base):
     __tablename__ = "assets"
@@ -67,8 +69,9 @@ class Asset(Base):
     id = Column(String, primary_key=True)
     kind = Column(String, nullable=False)
     current_status = Column(String)
-    last_heartbeat = Column(DateTime(timezone=True), default=datetime.datetime.utcnow)
-    location = Column(Geography(geometry_type="POINT", srid=4326))
+    last_heartbeat = Column(DateTime(timezone=True), default=func.now())
+    lat = Column(Float, nullable=True)
+    lon = Column(Float, nullable=True)
     classification_level = Column(String, nullable=False)
     metadata_json = Column(JSON, name="metadata", default={})
 
@@ -80,7 +83,8 @@ class Event(Base):
     event_type = Column(String, nullable=False)
     asset_id = Column(String, ForeignKey("assets.id"), nullable=False)
     ts = Column(DateTime(timezone=True), nullable=False)
-    geo_point = Column(Geography(geometry_type="POINT", srid=4326), nullable=False)
+    lat = Column(Float, nullable=True)
+    lon = Column(Float, nullable=True)
     classification_level = Column(String, nullable=False)
     confidence_score = Column(Float, nullable=False)
     payload = Column(JSON, nullable=False)
@@ -109,7 +113,6 @@ class Alert(Base):
     is_anomaly = Column(Boolean, default=False)
     human_validated = Column(Boolean, default=False)
     validated_by = Column(String)
-    # Campo cifrado para detalles sensibles
     _sensitive = Column("sensitive", Text, nullable=True)
 
     sensitive = EncryptedField("_sensitive")
@@ -119,13 +122,12 @@ class AuditLog(Base):
     __tablename__ = "audit_log"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    ts = Column(DateTime(timezone=True), default=datetime.datetime.utcnow)
+    ts = Column(DateTime(timezone=True), default=func.now())
     actor = Column(String, nullable=False)
     action = Column(String, nullable=False)
     resource_type = Column(String, nullable=False)
     resource_id = Column(String, nullable=False)
     context = Column(JSON, default={})
-    # Hash chain (CRITICAL-4): cada fila enlaza con la anterior vía sha256(prev_hash || canonical).
     prev_hash = Column(String(64), nullable=False, default="0" * 64)
     row_hash = Column(String(64), nullable=False, default="")
 
@@ -138,7 +140,7 @@ class IntelligenceProduct(Base):
     content = Column(Text, nullable=False)
     classification_level = Column(String, nullable=False, default="CONFIDENTIAL")
     source_data = Column(JSON, default={})
-    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
     created_by = Column(String, nullable=False, default="SYSTEM")
 
 
@@ -154,7 +156,7 @@ class PriorityIntelligenceRequirement(Base):
     classification_level = Column(String, nullable=False, default="CONFIDENTIAL")
     created_by = Column(String, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
-    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.datetime.utcnow())
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
 
 
 class SensorSource(Base):
@@ -165,8 +167,8 @@ class SensorSource(Base):
     sensor_type = Column(String, nullable=False)
     status = Column(String, nullable=False, default="ACTIVE")
     classification_level = Column(String, nullable=False, default="CONFIDENTIAL")
-    first_seen = Column(DateTime(timezone=True), nullable=False, default=datetime.datetime.utcnow())
-    last_seen = Column(DateTime(timezone=True), nullable=False, default=datetime.datetime.utcnow())
+    first_seen = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    last_seen = Column(DateTime(timezone=True), nullable=False, default=func.now())
     metadata_json = Column(JSON, name="metadata", default={})
 
 
@@ -180,112 +182,105 @@ class IntelFusionRecord(Base):
     correlated_count = Column(Integer, nullable=False, default=0)
     assessment = Column(JSON, default={})
     classification_level = Column(String, nullable=False, default="CONFIDENTIAL")
-    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.datetime.utcnow())
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
 
-
-# ─── NUEVOS MODELOS v3.0 ──────────────────────────────────────────────────
 
 class ORBATUnit(Base):
-    """Order of Battle — Jerarquía de unidades militares."""
     __tablename__ = "orbat_units"
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     parent_id = Column(String, ForeignKey("orbat_units.id"), nullable=True)
     name = Column(String, nullable=False)
-    unit_type = Column(String, nullable=False)  # tierra, mar, aire, espacio, ciber
+    unit_type = Column(String, nullable=False)
     classification_level = Column(String, nullable=False, default="CONFIDENTIAL")
-    location = Column(Geography(geometry_type="POINT", srid=4326), nullable=True)
+    lat = Column(Float, nullable=True)
+    lon = Column(Float, nullable=True)
     commander_id = Column(String, nullable=True)
-    status = Column(String, default="ACTIVE")  # ACTIVE, DEGRADED, OFFLINE
+    status = Column(String, default="ACTIVE")
     metadata_json = Column(JSON, name="metadata", default={})
 
 
 class Mission(Base):
-    """Misiones tácticas/estratégicas."""
     __tablename__ = "missions"
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     name = Column(String, nullable=False)
     description = Column(Text, nullable=True)
-    mission_type = Column(String, nullable=False)  # OFENSIVA, DEFENSIVA, PEACEKEEPING
-    status = Column(String, default="PLANNED")  # PLANNED, ACTIVE, COMPLETED, ABORTED
+    mission_type = Column(String, nullable=False)
+    status = Column(String, default="PLANNED")
     classification_level = Column(String, nullable=False, default="SECRET")
     start_time = Column(DateTime(timezone=True), nullable=True)
     end_time = Column(DateTime(timezone=True), nullable=True)
     commander_id = Column(String, nullable=True)
     orbat_unit_id = Column(String, ForeignKey("orbat_units.id"), nullable=True)
-    # Datos sensibles cifrados (objetivos, coordenadas, etc.)
     _sensitive = Column("sensitive", Text, nullable=True)
     sensitive = EncryptedField("_sensitive")
-    created_at = Column(DateTime(timezone=True), default=datetime.datetime.utcnow())
+    created_at = Column(DateTime(timezone=True), default=func.now())
     created_by = Column(String, nullable=False)
 
 
 class BlueForceTracking(Base):
-    """Blue Force Tracking — Amigos en tiempo real."""
     __tablename__ = "blue_force_tracking"
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     unit_id = Column(String, ForeignKey("orbat_units.id"), nullable=False)
     asset_id = Column(String, ForeignKey("assets.id"), nullable=True)
-    position = Column(Geography(geometry_type="POINT", srid=4326), nullable=False)
+    lat = Column(Float, nullable=False)
+    lon = Column(Float, nullable=False)
     altitude = Column(Float, nullable=True)
     heading = Column(Float, nullable=True)
     speed = Column(Float, nullable=True)
     status = Column(String, default="ACTIVE")
-    timestamp = Column(DateTime(timezone=True), default=datetime.datetime.utcnow())
+    timestamp = Column(DateTime(timezone=True), default=func.now())
 
 
 class ElectronicWarfareEvent(Base):
-    """Eventos de Guerra Electrónica."""
     __tablename__ = "ew_events"
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    event_type = Column(String, nullable=False)  # JAMMING, SIGINT, ELINT
+    event_type = Column(String, nullable=False)
     frequency_mhz = Column(Float, nullable=True)
     bandwidth_mhz = Column(Float, nullable=True)
     signal_strength = Column(Float, nullable=True)
-    position = Column(Geography(geometry_type="POINT", srid=4326), nullable=True)
+    lat = Column(Float, nullable=True)
+    lon = Column(Float, nullable=True)
     classification_level = Column(String, nullable=False, default="SECRET")
     _analysis = Column("analysis", Text, nullable=True)
     analysis = EncryptedField("_analysis")
-    timestamp = Column(DateTime(timezone=True), default=datetime.datetime.utcnow())
+    timestamp = Column(DateTime(timezone=True), default=func.now())
 
 
 class CyberIncident(Base):
-    """Incidentes de ciberdefensa."""
     __tablename__ = "cyber_incidents"
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    incident_type = Column(String, nullable=False)  # MALWARE, DDoS, INTRUSION, etc.
+    incident_type = Column(String, nullable=False)
     severity = Column(String, nullable=False)
     source_ip = Column(String, nullable=True)
     target_system = Column(String, nullable=False)
-    kill_chain_stage = Column(String, nullable=True)  # RECON, WEAPONIZE, DELIVER, etc.
+    kill_chain_stage = Column(String, nullable=True)
     classification_level = Column(String, nullable=False, default="SECRET")
     _forensics = Column("forensics", Text, nullable=True)
     forensics = EncryptedField("_forensics")
-    status = Column(String, default="OPEN")  # OPEN, INVESTIGATING, CONTAINED, CLOSED
-    created_at = Column(DateTime(timezone=True), default=datetime.datetime.utcnow())
+    status = Column(String, default="OPEN")
+    created_at = Column(DateTime(timezone=True), default=func.now())
     created_by = Column(String, nullable=False)
 
 
 class LogisticsSupply(Base):
-    """Cadena de suministro y suministros."""
     __tablename__ = "logistics_supplies"
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    item_type = Column(String, nullable=False)  # AMMO_5_56, AMMO_7_62, FUEL, MEDICINE
+    item_type = Column(String, nullable=False)
     quantity = Column(Float, nullable=False)
-    unit = Column(String, nullable=False)  # rounds, liters, boxes
+    unit = Column(String, nullable=False)
     location_id = Column(String, ForeignKey("orbat_units.id"), nullable=True)
     min_threshold = Column(Float, nullable=True)
     classification_level = Column(String, nullable=False, default="CONFIDENTIAL")
-    last_updated = Column(DateTime(timezone=True), default=datetime.datetime.utcnow())
+    last_updated = Column(DateTime(timezone=True), default=func.now())
 
 
 class EventStore(Base):
-    """Event Sourcing — Registro inmutable de eventos de dominio."""
     __tablename__ = "event_store"
 
     event_id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -294,5 +289,41 @@ class EventStore(Base):
     event_type = Column(String, nullable=False)
     payload = Column(JSON, nullable=False)
     metadata_json = Column("metadata", JSON, default={})
-    occurred_at = Column(DateTime(timezone=True), default=datetime.datetime.utcnow())
+    occurred_at = Column(DateTime(timezone=True), default=func.now())
     actor = Column(String, nullable=True)
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    username = Column(String, unique=True, nullable=False, index=True)
+    email = Column(String, unique=True, nullable=True)
+    hashed_password = Column(String, nullable=False)
+    role = Column(String, nullable=False, default="operator")
+    classification_level = Column(String, nullable=False, default="RESTRICTED")
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=func.now())
+
+
+class Sensor(Base):
+    __tablename__ = "sensors"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    sensor_type = Column(String, nullable=False)
+    lat = Column(Float, nullable=True)
+    lon = Column(Float, nullable=True)
+    status = Column(String, default="ACTIVE")
+    metadata_json = Column(JSON, name="metadata", default={})
+
+
+class IntelReport(Base):
+    __tablename__ = "intel_reports"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    title = Column(String, nullable=False)
+    body = Column(Text, nullable=True)
+    classification = Column(String, nullable=False, default="CONFIDENTIAL")
+    source = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=func.now())
+    author_id = Column(String, ForeignKey("users.id"), nullable=True)

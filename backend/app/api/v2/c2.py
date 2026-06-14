@@ -6,21 +6,18 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
-from app.db.session import async_session_factory
+from app.db.session import get_db
 from app.db.models.persistence import (
     ORBATUnit, Mission, BlueForceTracking, EventStore
 )
 from app.core.config import settings
-from app.core.security import JWTService
 from app.core.security import require_clearance
-from app.core.rate_limit import RateLimitMiddleware
 from pydantic import BaseModel, Field
 
 router = APIRouter()
-jwt_service = JWTService(settings.JWT_SECRET_KEY)
 
 
 # ── Pydantic schemas v2 ────────────────────────────────────────────
@@ -60,13 +57,6 @@ class OrderIn(BaseModel):
     classification: str = Field("SECRET", max_length=32, pattern=r"^(OPEN|RESTRICTED|CONFIDENTIAL|SECRET|TOP_SECRET)$")
 
 
-# ── Dependencia de sesión DB ────────────────────────────────────────
-
-async def get_db():
-    async with async_session_factory() as session:
-        yield session
-
-
 # ── ORBAT (Order of Battle) ────────────────────────────────────────
 
 @router.get("/orbat", tags=["C2 / ORBAT"])
@@ -74,8 +64,6 @@ async def get_orbat(
     db: AsyncSession = Depends(get_db),
     principal: dict = Depends(require_clearance("SECRET")),
 ):
-    """Obtiene jerarquía ORBAT completa."""
-    from geoalchemy2.shape import to_shape
     result = await db.execute(select(ORBATUnit).where(ORBATUnit.status != "DELETED"))
     units = result.scalars().all()
     return [
@@ -85,7 +73,7 @@ async def get_orbat(
             "type": u.unit_type,
             "parent_id": u.parent_id,
             "status": u.status,
-            "location": to_shape(u.location).wkt if u.location is not None else None,
+            "location": f"POINT({u.lon} {u.lat})" if u.lat is not None and u.lon is not None else None,
             "classification": u.classification_level
         } for u in units
     ]
@@ -211,24 +199,20 @@ async def report_blue_force(
     db: AsyncSession = Depends(get_db),
     principal: dict = Depends(require_clearance("SECRET")),
 ):
-    """Reporte de posición Blue Force (amigo)."""
-    from geoalchemy2.elements import WKTElement
-    position = WKTElement(f"POINT({payload.lon} {payload.lat})", srid=4326)
-
     report = BlueForceTracking(
         id=str(uuid.uuid4()),
         unit_id=payload.unit_id,
         asset_id=payload.asset_id,
-        position=position,
+        lat=payload.lat,
+        lon=payload.lon,
         altitude=payload.altitude,
         heading=payload.heading,
         speed=payload.speed,
         status="ACTIVE",
-        timestamp=datetime.utcnow()
+        timestamp=datetime.now(timezone.utc)
     )
     db.add(report)
 
-    # Evento para procesamiento
     event = EventStore(
         aggregate_id=report.id,
         aggregate_type="BlueForce",
@@ -246,8 +230,6 @@ async def get_active_blue_force(
     db: AsyncSession = Depends(get_db),
     principal: dict = Depends(require_clearance("SECRET")),
 ):
-    """Obtiene fuerzas amigas activas."""
-    from geoalchemy2.shape import to_shape
     result = await db.execute(
         select(BlueForceTracking)
         .where(BlueForceTracking.status == "ACTIVE")
@@ -258,7 +240,7 @@ async def get_active_blue_force(
         {
             "id": r.id,
             "unit_id": r.unit_id,
-            "position": to_shape(r.position).wkt if r.position is not None else None,
+            "position": f"POINT({r.lon} {r.lat})" if r.lat is not None and r.lon is not None else None,
             "altitude": r.altitude,
             "heading": r.heading,
             "speed": r.speed,

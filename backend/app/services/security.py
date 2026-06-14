@@ -98,6 +98,12 @@ class SecurityService:
     def verify_mtls(request: Request) -> Dict[str, Any]:
         """
         Extracts subject info from the mTLS certificate.
+        Requires X-SSL-Verified header from reverse proxy.
         """
-        subject = request.headers.get("X-SSL-Subject", "CN=device,O=SESIS")
+        verified = request.headers.get("X-SSL-Verified", "").lower()
+        if verified != "success":
+            return {"subject": None, "verified": False}
+        subject = request.headers.get("X-SSL-Subject", "")
+        if not subject:
+            return {"subject": None, "verified": False}
         return {"subject": subject, "verified": True}

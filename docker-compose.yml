@@ -1,13 +1,27 @@
-version: "3.9"
-
 x-logging: &default-logging
   driver: "json-file"
   options:
     max-size: "10m"
     max-file: "3"
 
+x-api-environment: &api-environment
+  SECRET_KEY: ${SECRET_KEY:?error}
+  ENVIRONMENT: ${ENVIRONMENT:-development}
+  DATABASE_URL: ${DATABASE_URL}
+  REDIS_URL: ${REDIS_URL}
+  NATS_URL: ${NATS_URL}
+  NEO4J_URI: ${NEO4J_URI}
+  NEO4J_USER: ${NEO4J_USER:-neo4j}
+  NEO4J_PASSWORD: ${NEO4J_PASSWORD:?error}
+  OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+  OLLAMA_MODEL: ${OLLAMA_MODEL:-fsociety}
+  CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+  JWT_ACCESS_TOKEN_EXPIRE_MINUTES: ${JWT_ACCESS_TOKEN_EXPIRE_MINUTES:-15}
+  JWT_REFRESH_TOKEN_EXPIRE_DAYS: ${JWT_REFRESH_TOKEN_EXPIRE_DAYS:-7}
+  MFA_ENABLED: ${MFA_ENABLED:-true}
+  ADMIN_INITIAL_PASSWORD: ${ADMIN_INITIAL_PASSWORD:-}
+
 services:
-  # ── Core Infrastructure ──
   postgres:
     image: pgvector/pgvector:pg16
     environment:
@@ -28,12 +42,13 @@ services:
 
   redis:
     image: redis:7-alpine
+    command: redis-server --requirepass ${REDIS_PASSWORD:?error} --appendonly yes
     ports:
       - "127.0.0.1:6379:6379"
     volumes:
       - redisdata:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "--no-auth-warning", "-a", "${REDIS_PASSWORD:?error}", "ping"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -41,8 +56,14 @@ services:
 
   nats:
     image: nats:2-alpine
+    command: ["-js", "--user", "${NATS_USER:-sesis}", "--pass", "${NATS_PASSWORD:?error}"]
     ports:
       - "127.0.0.1:4222:4222"
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8222/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
     logging: *default-logging
 
   neo4j:
@@ -56,28 +77,20 @@ services:
     ports:
       - "127.0.0.1:7474:7474"
       - "127.0.0.1:7687:7687"
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u $${NEO4J_USER:-neo4j} -p $${NEO4J_PASSWORD} 'RETURN 1' || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
     logging: *default-logging
 
-  # ── Backend ──
   api:
     build:
       context: ./backend
       dockerfile: Dockerfile
     environment:
-      SECRET_KEY: ${SECRET_KEY:?error}
-      ENVIRONMENT: ${ENVIRONMENT:-development}
-      DATABASE_URL: ${DATABASE_URL}
-      REDIS_URL: ${REDIS_URL}
-      NATS_URL: ${NATS_URL}
-      NEO4J_URI: ${NEO4J_URI}
-      NEO4J_USER: ${NEO4J_USER:-neo4j}
-      NEO4J_PASSWORD: ${NEO4J_PASSWORD:?error}
-      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
-      OLLAMA_MODEL: ${OLLAMA_MODEL:-fsociety}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
-      JWT_ACCESS_TOKEN_EXPIRE_MINUTES: ${JWT_ACCESS_TOKEN_EXPIRE_MINUTES:-15}
-      JWT_REFRESH_TOKEN_EXPIRE_DAYS: ${JWT_REFRESH_TOKEN_EXPIRE_DAYS:-7}
-      MFA_ENABLED: ${MFA_ENABLED:-true}
+      <<: *api-environment
     depends_on:
       postgres:
         condition: service_healthy
@@ -91,6 +104,12 @@ services:
       - ./backend:/app
       - ${FERNET_KEY_PATH:-./fernet.key}:/app/fernet.key:ro
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')\" || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
     logging: *default-logging
 
   celery-worker:
@@ -100,30 +119,30 @@ services:
     environment:
       <<: *api-environment
     depends_on:
-      - api
-      - redis
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     volumes:
       - ./backend:/app
+      - ${FERNET_KEY_PATH:-./fernet.key}:/app/fernet.key:ro
     command: celery -A app.workers.celery_app worker --loglevel=info
     logging: *default-logging
 
-  # ── LLM ──
   ollama:
     image: ollama/ollama:latest
     volumes:
       - ollamadata:/root/.ollama
     ports:
       - "127.0.0.1:11434:11434"
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     logging: *default-logging
 
-  # ── Frontend ──
   frontend:
     build:
       context: ./frontend
@@ -133,13 +152,20 @@ services:
     ports:
       - "127.0.0.1:3000:3000"
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     volumes:
       - ./frontend:/app
       - /app/node_modules
+      - /app/.next
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     logging: *default-logging
 
-  # ── Monitoring ──
   prometheus:
     image: prom/prometheus:latest
     volumes:
@@ -147,6 +173,11 @@ services:
       - promdata:/prometheus
     ports:
       - "127.0.0.1:9090:9090"
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:9090/-/healthy || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
     logging: *default-logging
 
   grafana:
@@ -156,9 +187,16 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?error}
     volumes:
       - grafanadata:/var/lib/grafana
-      - ./infra/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./infra/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
+      - ./infra/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
     ports:
       - "127.0.0.1:3001:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     logging: *default-logging
 
 volumes:

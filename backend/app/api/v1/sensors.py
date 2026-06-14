@@ -218,7 +218,7 @@ async def _upsert_sensor_source(
             select(SensorSource).where(SensorSource.sensor_id == sensor_id)
         )
         existing = result.scalars().first()
-        now = datetime.datetime.utcnow()
+        now = datetime.datetime.now(datetime.timezone.utc)
 
         if existing:
             existing.last_seen = now
@@ -317,7 +317,7 @@ async def ingest_humint(
         "event_id": event_id,
         "source_type": "HUMINT",
         "fusion_score": fusion_score,
-        "received_at": datetime.datetime.utcnow().isoformat(),
+        "received_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
     }
 
 
@@ -364,7 +364,7 @@ async def ingest_satellite(
         "centroid": centroid,
         "ai_tags": product.ai_tags,
         "classification": product.classification,
-        "received_at": datetime.datetime.utcnow().isoformat(),
+        "received_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
     }
 
 
@@ -428,7 +428,7 @@ async def ingest_sigint(
         "source_type": "SIGINT",
         "sensor_type": report.sensor_type,
         "fusion_score": fusion_score,
-        "received_at": datetime.datetime.utcnow().isoformat(),
+        "received_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
     }
 
 
@@ -494,7 +494,7 @@ async def ingest_cyber_alert(
         "alert_type": alert.alert_type,
         "severity": alert.severity,
         "fusion_score": fusion_score,
-        "received_at": datetime.datetime.utcnow().isoformat(),
+        "received_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
     }
 
 
@@ -546,7 +546,7 @@ async def ingest_osint(
         "source_type": "OSINT",
         "source_name": report.source_name,
         "classification": report.classification,
-        "received_at": datetime.datetime.utcnow().isoformat(),
+        "received_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
     }
 
 

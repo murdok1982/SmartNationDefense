@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from app.db.models.persistence import Asset, Event, Telemetry, AuditLog
@@ -14,11 +15,7 @@ class DataService:
         self.db = db
 
     async def log_audit(self, actor: str, action: str, resource_type: str, resource_id: str, context: Dict[str, Any] = {}):
-        """
-        Record an entry in the append-only audit log con hash chain (CRITICAL-4).
-        """
         try:
-            # Encadenar con la fila previa.
             prev_q = await self.db.execute(
                 select(AuditLog.row_hash).order_by(AuditLog.id.desc()).limit(1)
             )
@@ -51,23 +48,19 @@ class DataService:
                 row_hash=row_hash,
             )
             self.db.add(new_log)
-            # await self.db.commit() # Usually called by the caller or specialized commit
         except Exception as e:
             logger.error(f"Audit Logging Failed: {e}")
 
     async def process_event(self, event_data: Dict[str, Any]):
-        """
-        Persists a UEE event into the database.
-        Splits logic based on event_type.
-        """
         try:
-            # 1. Store the raw event
+            geo = event_data.get("geo", {})
             new_event = Event(
                 event_id=event_data["event_id"],
                 event_type=event_data["event_type"],
                 asset_id=event_data["asset_id"],
                 ts=event_data["ts"],
-                geo_point=f"POINT({event_data['geo']['lon']} {event_data['geo']['lat']})",
+                lat=geo.get("lat"),
+                lon=geo.get("lon"),
                 classification_level=event_data["classification_level"],
                 confidence_score=event_data["confidence_score"],
                 payload=event_data["payload"],
@@ -75,11 +68,9 @@ class DataService:
             )
             self.db.add(new_event)
             
-            # 2. Update Asset state for heartbeats and status changes
             if event_data["event_type"] in ["asset_heartbeat", "asset_status_change"]:
                 await self.update_asset_state(event_data)
                 
-            # 3. Handle telemetry
             if event_data["event_type"] == "vehicle_telemetry_sample":
                 await self.store_telemetry(event_data)
                 
@@ -92,10 +83,11 @@ class DataService:
 
     async def update_asset_state(self, event_data: Dict[str, Any]):
         asset_id = event_data["asset_id"]
-        # In a real app, we'd upsert. For now, simple update logic.
+        geo = event_data.get("geo", {})
         q = update(Asset).where(Asset.id == asset_id).values(
             last_heartbeat=event_data["ts"],
-            location=f"POINT({event_data['geo']['lon']} {event_data['geo']['lat']})",
+            lat=geo.get("lat"),
+            lon=geo.get("lon"),
             current_status=event_data["payload"].get("status", "active")
         )
         await self.db.execute(q)
