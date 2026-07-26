@@ -3,10 +3,13 @@ from __future__ import annotations
 import hashlib
 import io
 import time
+from pathlib import Path
 
 import httpx
 
+from app.core.config import settings
 from app.services.osint.tools.base import ToolBase, ToolResult
+from app.services.osint.tools.web_tools import safe_http_get
 
 MAX_SIZE = 52_428_800  # 50MB
 
@@ -27,8 +30,8 @@ class DocumentExtractTool(ToolBase):
 
         if url:
             try:
-                async with httpx.AsyncClient(timeout=30) as client:
-                    resp = await client.get(url, follow_redirects=True)
+                async with httpx.AsyncClient(timeout=30, follow_redirects=False) as client:
+                    resp = await safe_http_get(client, url)
                     resp.raise_for_status()
                     content = resp.content
                     if len(content) > MAX_SIZE:
@@ -37,8 +40,21 @@ class DocumentExtractTool(ToolBase):
             except Exception as exc:
                 return ToolResult(success=False, data=None, source=url, method="document_extract", error=str(exc))
         elif file_path:
+            allowed_dir = settings.OSINT_DOCS_ALLOWED_DIR
+            if not allowed_dir:
+                return ToolResult(
+                    success=False, data=None, source=file_path, method="document_extract",
+                    error="Lectura de archivos locales deshabilitada (configure OSINT_DOCS_ALLOWED_DIR)",
+                )
+            base = Path(allowed_dir).resolve()
+            target = Path(file_path).resolve()
+            if target != base and base not in target.parents:
+                return ToolResult(
+                    success=False, data=None, source=file_path, method="document_extract",
+                    error="Ruta fuera del directorio permitido",
+                )
             try:
-                with open(file_path, "rb") as f:
+                with open(target, "rb") as f:
                     content = f.read(MAX_SIZE)
                 content_type = ""
             except Exception as exc:

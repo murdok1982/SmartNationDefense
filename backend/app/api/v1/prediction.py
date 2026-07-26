@@ -1,11 +1,18 @@
 # -*- coding: utf-8 -*-
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Dict, Any, List
 from pydantic import BaseModel
 
+from app.db.session import async_session_factory
 from app.services.prediction.threat_prediction import threat_prediction_service
 
 router = APIRouter()
+
+
+async def get_db():
+    async with async_session_factory() as session:
+        yield session
 
 
 class PredictMovementRequest(BaseModel):
@@ -55,3 +62,28 @@ async def early_warning(request: EarlyWarningRequest):
         friendly_locations=request.friendly_locations,
         threat_radius_km=request.threat_radius_km,
     )
+
+
+@router.get("/threat-trend")
+async def threat_trend(
+    window_hours: int = 24,
+    buckets: int = 6,
+    db: AsyncSession = Depends(get_db),
+):
+    if not (1 <= window_hours <= 24 * 30):
+        raise HTTPException(status_code=400, detail="window_hours fuera de rango (1-720)")
+    if not (2 <= buckets <= 48):
+        raise HTTPException(status_code=400, detail="buckets fuera de rango (2-48)")
+    try:
+        return await threat_prediction_service.statistical_threat_trend(
+            db=db,
+            window_hours=window_hours,
+            buckets=buckets,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"No se pudieron calcular estadisticas desde la base de datos: {exc}",
+        ) from exc

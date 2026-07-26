@@ -2,6 +2,7 @@
 Cyber Operations API v2.
 Ciberdefensa, Kill Chain, Threat Hunting, Incident Response.
 """
+import logging
 from enum import Enum
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,6 +17,8 @@ from app.db.session import async_session_factory
 from app.db.models.persistence import CyberIncident, EventStore
 from app.core.config import settings
 from app.core.security import require_clearance
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -191,7 +194,12 @@ async def start_threat_hunt(
 
     await db.commit()
 
-    # TODO: Integrar con motor de búsqueda (Elasticsearch/Splunk)
+    logger.info(
+        "Threat hunt %s iniciada (query=%s, type=%s). "
+        "Integracion con motor de busqueda pendiente — "
+        "los resultados requieren conexion con Elasticsearch/Splunk",
+        hunt_id, payload.hunt_query, payload.hunt_type,
+    )
     return {
         "hunt_id": hunt_id,
         "status": "started",

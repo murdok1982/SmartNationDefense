@@ -6,7 +6,7 @@ from sqlalchemy import JSON, Boolean, DateTime, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.session import get_db
-from app.db.models.osint.base import UUIDMixin
+from app.db.models.osint.base import UUIDMixin, Base
 
 class AuditLog(UUIDMixin, Base):
     """Append-only audit trail. No updated_at — entries are immutable."""

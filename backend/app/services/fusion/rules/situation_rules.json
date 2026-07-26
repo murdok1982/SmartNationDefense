@@ -1,0 +1,154 @@
+{
+  "_meta": {
+    "description": "Reglas tácticas para JDL Level 2 (Situation Assessment) y Level 3 (Impact Assessment)",
+    "version": "1.0.0",
+    "source": "MAVEN-SMART-SYSTEM"
+  },
+  "formation_patterns": [
+    {
+      "name": "COLUMNA",
+      "min_units": 3,
+      "max_distance_km": 0.5,
+      "alignment_angle_tolerance_deg": 20,
+      "description": "Formación en columna: movimiento lineal de vehículos",
+      "tactical_implication": "Reubicación de fuerzas, posible convoy logístico o refuerzo"
+    },
+    {
+      "name": "LINEA",
+      "min_units": 4,
+      "max_distance_km": 1.0,
+      "alignment_angle_tolerance_deg": 15,
+      "description": "Formación en línea: unidades desplegadas en frente amplio",
+      "tactical_implication": "Preparación para asalto frontal o línea defensiva"
+    },
+    {
+      "name": "CUÑA",
+      "min_units": 3,
+      "max_distance_km": 0.8,
+      "alignment_angle_tolerance_deg": 30,
+      "description": "Formación en cuña: punta de lanza",
+      "tactical_implication": "Penetración de defensas, ruptura de frente"
+    },
+    {
+      "name": "DIAMANTE",
+      "min_units": 4,
+      "max_distance_km": 0.6,
+      "alignment_angle_tolerance_deg": 25,
+      "description": "Formación en diamante: protección 360°",
+      "tactical_implication": "Movimiento táctico en territorio hostil, protección de unidad de mando"
+    },
+    {
+      "name": "CIRCULAR",
+      "min_units": 4,
+      "max_distance_km": 0.4,
+      "alignment_angle_tolerance_deg": 40,
+      "description": "Formación circular: perímetro defensivo",
+      "tactical_implication": "Defensa estática, punto de reunión o descanso"
+    },
+    {
+      "name": "V_ZANJA",
+      "min_units": 3,
+      "max_distance_km": 0.7,
+      "alignment_angle_tolerance_deg": 20,
+      "description": "Formación en V: emboscada",
+      "tactical_implication": "Emboscada inminente o zona de peligro ACTIVA"
+    }
+  ],
+  "movement_patterns": [
+    {
+      "name": "AVANCE_RAPIDO",
+      "speed_kmh_min": 30,
+      "heading_consistency_deg": 30,
+      "description": "Movimiento rápido y direccional",
+      "tactical_implication": "Ofensiva, persecución o repliegue táctico"
+    },
+    {
+      "name": "AVANCE_LENTO",
+      "speed_kmh_min": 5,
+      "speed_kmh_max": 20,
+      "heading_consistency_deg": 45,
+      "description": "Movimiento lento con cambios de dirección",
+      "tactical_implication": "Reconocimiento, búsqueda o avance cauteloso"
+    },
+    {
+      "name": "ESTATICO",
+      "speed_kmh_max": 3,
+      "description": "Sin desplazamiento significativo",
+      "tactical_implication": "Defensa estática, preparación de fuegos, descanso"
+    },
+    {
+      "name": "RETIRADA",
+      "speed_kmh_min": 25,
+      "heading_consistency_deg": 25,
+      "direction_from_front": true,
+      "description": "Movimiento retrógrado rápido",
+      "tactical_implication": "Retirada organizada o repliegue táctico"
+    }
+  ],
+  "threat_scenarios": [
+    {
+      "name": "ARTILLERIA_DESPLIEGUE",
+      "indicators": ["unidades ARTILLERY estáticas", "formación circular", "distancia a frente > 5km"],
+      "threat_level": 85,
+      "timeline_min": 15,
+      "response": "Contrafuegos inmediato o supresión"
+    },
+    {
+      "name": "EMBOSCADA_INMINENTE",
+      "indicators": ["formación V_ZANJA", "unidades INFANTRY estáticas", "cobertura lateral"],
+      "threat_level": 95,
+      "timeline_min": 5,
+      "response": "Ruta alternativa, supresión preventiva"
+    },
+    {
+      "name": "RECONOCIMIENTO_ENEMIGO",
+      "indicators": ["unidades pequeñas", "movimiento errático", "formación dispersa", "retirada rápida"],
+      "threat_level": 40,
+      "timeline_min": 30,
+      "response": "Monitoreo continuo, no revelar posiciones"
+    },
+    {
+      "name": "ASALTO_BLINDADO",
+      "indicators": ["formación CUÑA", "múltiples ARMOR", "AVANCE_RAPIDO"],
+      "threat_level": 90,
+      "timeline_min": 10,
+      "response": "Preparar defensa antitanque, solicitar CAS"
+    },
+    {
+      "name": "INFILTRACION",
+      "indicators": ["unidades pequeñas", "movimiento nocturno", "terreno cubierto", "SIGINT bajo"],
+      "threat_level": 70,
+      "timeline_min": 45,
+      "response": "Patrullas de interceptación, sensores acústicos"
+    },
+    {
+      "name": "LOGISTICA_INTERRUMPIDA",
+      "indicators": ["columna detenida", "formación LINEA defensiva", "actividad de ingenieros"],
+      "threat_level": 60,
+      "timeline_min": 60,
+      "response": "Interdicción de líneas de suministro"
+    }
+  ],
+  "intention_classification": {
+    "OFENSIVA": {
+      "indicators": ["AVANCE_RAPIDO", "formación CUÑA", "concentración de fuerzas", "EW activo"],
+      "confidence_threshold": 0.7
+    },
+    "DEFENSIVA": {
+      "indicators": ["ESTATICO", "formación CIRCULAR", "fortificaciones", "campos minados"],
+      "confidence_threshold": 0.65
+    },
+    "RECONOCIMIENTO": {
+      "indicators": ["unidades pequeñas", "AVANCE_LENTO", "dispersión", "cobertura de terreno"],
+      "confidence_threshold": 0.6
+    },
+    "RETIRADA": {
+      "indicators": ["RETIRADA", "formación COLUMNA", "rumbo retrógrado", "humo/contramedidas"],
+      "confidence_threshold": 0.7
+    },
+    "LOGISTICA": {
+      "indicators": ["COLUMNA", "AVANCE_LENTO", "vehículos pesados", "ruta fija"],
+      "confidence_threshold": 0.6
+    }
+  }
+}

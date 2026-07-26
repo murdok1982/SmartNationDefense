@@ -20,7 +20,7 @@ from uuid import UUID
 
 from app.core.classification import (
     ClassificationLevel,
-    TLP,
+    TLPMarker as TLP,
 )
 from app.services.intel.llm.exceptions import ClassificationViolationError
 
@@ -41,7 +41,7 @@ class AgentTask:
 
     kind: str
     classification: ClassificationLevel = ClassificationLevel.PUBLIC
-    tlp: TLP = TLPMarker.CLEAR
+    tlp: TLP = TLP.CLEAR
     user_id: Optional[UUID] = None
     payload: dict[str, Any] = field(default_factory=dict)
 

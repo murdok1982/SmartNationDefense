@@ -2,8 +2,9 @@
 import hashlib
 import logging
 import time
+import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Optional, List, Tuple, Any
+from typing import Any, Optional, List, Tuple
 
 from fastapi import Request, HTTPException, status, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -26,23 +27,58 @@ def hash_password(plain: str) -> str:
     return pwd_context.hash(plain)
 
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
-    to_encode = data.copy()
+def create_access_token(
+    data: dict | str,
+    expires_delta: Optional[timedelta] = None,
+    **extra_claims: Any,
+) -> str:
+    if isinstance(data, str):
+        to_encode: dict = {"sub": data}
+    else:
+        to_encode = data.copy()
+    to_encode.update(extra_claims)
     expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES))
-    to_encode.update({"exp": expire, "type": "access"})
+    to_encode.update({
+        "exp": expire,
+        "iat": datetime.now(timezone.utc),
+        "type": "access",
+        "jti": uuid.uuid4().hex,
+        "aud": settings.JWT_AUDIENCE,
+        "iss": settings.JWT_ISSUER,
+    })
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm="HS256")
 
 
-def create_refresh_token(data: dict) -> str:
-    to_encode = data.copy()
+def create_refresh_token(
+    data: dict | str,
+    **extra_claims: Any,
+) -> str:
+    if isinstance(data, str):
+        to_encode: dict = {"sub": data}
+    else:
+        to_encode = data.copy()
+    to_encode.update(extra_claims)
     expire = datetime.now(timezone.utc) + timedelta(days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS)
-    to_encode.update({"exp": expire, "type": "refresh"})
+    to_encode.update({
+        "exp": expire,
+        "iat": datetime.now(timezone.utc),
+        "type": "refresh",
+        "jti": uuid.uuid4().hex,
+        "aud": settings.JWT_AUDIENCE,
+        "iss": settings.JWT_ISSUER,
+    })
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm="HS256")
 
 
 def decode_token(token: str, is_refresh: bool = False) -> dict:
     try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+        payload = jwt.decode(
+            token,
+            settings.SECRET_KEY,
+            algorithms=["HS256"],
+            audience=settings.JWT_AUDIENCE,
+            issuer=settings.JWT_ISSUER,
+        )
         if is_refresh and payload.get("type") != "refresh":
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token type")
         if not is_refresh and payload.get("type") != "access":
@@ -50,6 +86,29 @@ def decode_token(token: str, is_refresh: bool = False) -> dict:
         return payload
     except JWTError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token invalido o expirado")
+
+
+async def revoke_jti(jti: str, exp: int) -> None:
+    """Registra un jti en la blacklist de Redis hasta su expiracion natural."""
+    try:
+        from app.db.redis_pool import get_redis_pool
+        redis_client = await get_redis_pool()
+        ttl = max(1, int(exp) - int(time.time()))
+        await redis_client.setex(f"revoked:{jti}", ttl, "1")
+    except Exception as e:
+        logger.warning(f"No se pudo registrar la revocacion del token: {e}")
+
+
+async def is_jti_revoked(jti: Optional[str]) -> bool:
+    if not jti:
+        return False
+    try:
+        from app.db.redis_pool import get_redis_pool
+        redis_client = await get_redis_pool()
+        return bool(await redis_client.exists(f"revoked:{jti}"))
+    except Exception as e:
+        logger.warning(f"No se pudo verificar la revocacion del token: {e}")
+        return False
 
 
 async def get_current_user(
@@ -61,6 +120,8 @@ async def get_current_user(
     payload = decode_token(token)
     if payload.get("type") != "access":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token type")
+    if await is_jti_revoked(payload.get("jti")):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token revocado")
     return payload
 
 
@@ -194,7 +255,8 @@ class JWTService:
                 token,
                 self.secret_key,
                 algorithms=[self.algorithm],
-                options={"verify_aud": False, "verify_iss": False}
+                audience=settings.JWT_AUDIENCE,
+                issuer=settings.JWT_ISSUER,
             )
             return TokenPayload(**payload)
         except JWTError:

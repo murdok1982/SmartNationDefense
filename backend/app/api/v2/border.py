@@ -6,15 +6,18 @@ from enum import Enum
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from typing import Optional, List
-from datetime import datetime
+from typing import Optional, List, Dict, Any
+from datetime import datetime, timedelta, timezone
+import asyncio
+import json
 import uuid
 
 from pydantic import BaseModel, Field
 
 from app.db.session import async_session_factory
-from app.db.models.persistence import EventStore, Asset
+from app.db.models.persistence import EventStore, Asset, Sensor
 from app.core.config import settings
+from app.core.events import event_bus
 from app.core.security import require_clearance
 
 router = APIRouter()
@@ -93,18 +96,50 @@ async def get_perimeter_status(
     db: AsyncSession = Depends(get_db),
     principal: dict = Depends(require_clearance("CONFIDENTIAL")),
 ):
-    """Estado del perímetro fronterizo."""
-    # TODO: Conectar con sensores reales
+    """Estado del perímetro fronterizo calculado desde sensores y alertas en BD."""
+    sensors = (await db.execute(select(Sensor))).scalars().all()
+    if not sensors:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="Perimetro no configurado: no hay sensores registrados en la base de datos",
+        )
+
+    since = datetime.now(timezone.utc) - timedelta(hours=24)
+    alert_rows = (
+        await db.execute(
+            select(EventStore).where(
+                EventStore.event_type == "PERIMETER_ALERT",
+                EventStore.occurred_at >= since,
+            )
+        )
+    ).scalars().all()
+
+    sensor_sector: Dict[str, str] = {}
+    sectors: Dict[str, Dict[str, Any]] = {}
+    active_total = 0
+    for sensor in sensors:
+        sector = (sensor.metadata_json or {}).get("sector", "SIN_SECTOR")
+        sensor_sector[sensor.id] = sector
+        bucket = sectors.setdefault(sector, {"name": sector, "sensors_active": 0, "sensors_total": 0, "alerts_24h": 0})
+        bucket["sensors_total"] += 1
+        if (sensor.status or "").upper() == "ACTIVE":
+            bucket["sensors_active"] += 1
+            active_total += 1
+
+    for alert in alert_rows:
+        sector = sensor_sector.get((alert.payload or {}).get("sensor_id", ""), "SIN_SECTOR")
+        if sector in sectors:
+            sectors[sector]["alerts_24h"] += 1
+
+    for bucket in sectors.values():
+        bucket["status"] = "SECURE" if bucket["alerts_24h"] == 0 else ("ELEVATED" if bucket["alerts_24h"] < 5 else "ALERT")
+
     return {
-        "sectors": [
-            {"name": "NORTE", "status": "SECURE", "sensors_active": 12, "alerts_24h": 3},
-            {"name": "SUR", "status": "ELEVATED", "sensors_active": 8, "alerts_24h": 7},
-            {"name": "ESTE", "status": "SECURE", "sensors_active": 15, "alerts_24h": 1},
-            {"name": "OESTE", "status": "MONITORING", "sensors_active": 10, "alerts_24h": 4}
-        ],
-        "total_sensors": 45,
-        "active_sensors": 42,
-        "alerts_last_24h": 15
+        "sectors": list(sectors.values()),
+        "total_sensors": len(sensors),
+        "active_sensors": active_total,
+        "alerts_last_24h": len(alert_rows),
+        "source": "database",
     }
 
 
@@ -132,10 +167,20 @@ async def report_adiz_violation(
     db.add(event)
 
     await db.commit()
+    await event_bus.publish("border.adiz.violation", {
+        "event_id": event_id,
+        "aircraft_id": payload.aircraft_id,
+        "lat": payload.lat,
+        "lon": payload.lon,
+        "altitude": payload.altitude,
+        "speed": payload.speed,
+        "heading": payload.heading,
+        "classification": payload.classification,
+    })
     return {
         "event_id": event_id,
         "status": "violation_recorded",
-        "response": "INTERCEPTOR_DISPATCHED",
+        "order_event_subject": "border.adiz.violation",
         "classification": payload.classification
     }
 
@@ -147,31 +192,85 @@ async def get_maritime_tracks(
     principal: dict = Depends(require_clearance("CONFIDENTIAL")),
 ):
     """Obtiene tracks marítimos (AIS) en zona económica exclusiva."""
-    # TODO: Integrar con AIS real
+    if not settings.AISSTREAM_API_KEY:
+        return {
+            "zone": zone or "EEZ_COMPLETE",
+            "vessels": [],
+            "total_tracks": 0,
+            "alerts": 0,
+            "source": "unconfigured",
+        }
+
+    if not settings.AISSTREAM_BOUNDING_BOXES:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="AISSTREAM_BOUNDING_BOXES no configurado",
+        )
+
+    try:
+        import websockets
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="Libreria 'websockets' no disponible para conectar con AISStream",
+        ) from exc
+
+    try:
+        bounding_boxes = json.loads(settings.AISSTREAM_BOUNDING_BOXES)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="AISSTREAM_BOUNDING_BOXES no es JSON valido",
+        ) from exc
+
+    vessels: List[Dict[str, Any]] = []
+    seen_mmsi = set()
+    deadline = settings.AISSTREAM_COLLECT_SECONDS
+    try:
+        async with websockets.connect(settings.AISSTREAM_URL, open_timeout=10) as ws:
+            await ws.send(json.dumps({
+                "APIKey": settings.AISSTREAM_API_KEY,
+                "BoundingBoxes": bounding_boxes,
+                "FilterMessageTypes": ["PositionReport", "ShipStaticData"],
+            }))
+            while True:
+                try:
+                    raw = await asyncio.wait_for(ws.recv(), timeout=deadline)
+                except asyncio.TimeoutError:
+                    break
+                try:
+                    message = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
+                if message.get("MessageType") != "PositionReport":
+                    continue
+                report = message.get("Message", {}).get("PositionReport", {})
+                mmsi = str(report.get("UserID", ""))
+                if not mmsi or mmsi in seen_mmsi:
+                    continue
+                seen_mmsi.add(mmsi)
+                vessels.append({
+                    "mmsi": mmsi,
+                    "position": {"lat": report.get("Latitude"), "lon": report.get("Longitude")},
+                    "speed_knots": report.get("Sog"),
+                    "course_deg": report.get("Cog"),
+                    "heading_deg": report.get("TrueHeading"),
+                    "nav_status": report.get("NavigationalStatus"),
+                })
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Error conectando con AISStream: {exc}",
+        ) from exc
+
     return {
         "zone": zone or "EEZ_COMPLETE",
-        "vessels": [
-            {
-                "mmsi": "123456789",
-                "name": "BUQUE PESQUERO 1",
-                "type": "FISHING",
-                "position": "41.0N,4.5W",
-                "speed": 8.5,
-                "course": 180,
-                "status": "MONITORED"
-            },
-            {
-                "mmsi": "987654321",
-                "name": "CARGA INTERNACIONAL",
-                "type": "CARGO",
-                "position": "40.5N,3.8W",
-                "speed": 12.0,
-                "course": 270,
-                "status": "CLEARED"
-            }
-        ],
-        "total_tracks": 2,
-        "alerts": 0
+        "vessels": vessels,
+        "total_tracks": len(vessels),
+        "alerts": 0,
+        "source": "aisstream",
     }
 
 
@@ -196,10 +295,26 @@ async def initiate_maritime_interdiction(
     )
     db.add(event)
 
+    available_units = (
+        await db.execute(
+            select(Asset.id).where(
+                Asset.kind.in_(["NAVAL", "COAST_GUARD", "PATROL"]),
+                Asset.current_status == "active",
+            )
+        )
+    ).scalars().all()
+
     await db.commit()
+    await event_bus.publish("border.maritime.interdiction", {
+        "interdiction_id": interdiction_id,
+        "vessel_mmsi": payload.vessel_mmsi,
+        "reason": payload.reason,
+        "classification": payload.classification,
+    })
     return {
         "interdiction_id": interdiction_id,
-        "status": "initiated",
-        "response_units": ["COAST_GUARD_PATROL_1", "NAVAL_UNIT_3"],
+        "status": "order_recorded",
+        "order_event_subject": "border.maritime.interdiction",
+        "response_units": list(available_units),
         "classification": payload.classification
     }

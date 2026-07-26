@@ -2,7 +2,11 @@
 Anomaly Detection Module — Actualizado con Isolation Forest.
 Sustituye Z-score por detección más robusta.
 """
-import numpy as np
+try:
+    import numpy as np
+except ImportError:
+    np = None
+import statistics
 from typing import List, Dict, Any, Optional
 import logging
 
@@ -100,9 +104,13 @@ def detect_telemetry_spike(
     if len(historical) < 10:
         return None
 
-    values = np.array(historical)
-    mean = np.mean(values)
-    std = np.std(values)
+    if np is not None:
+        values = np.array(historical)
+        mean = float(np.mean(values))
+        std = float(np.std(values))
+    else:
+        mean = statistics.fmean(historical)
+        std = statistics.pstdev(historical)
 
     z_score = abs(current_value - mean) / std if std > 0 else 0
 

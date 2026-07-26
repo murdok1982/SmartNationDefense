@@ -225,6 +225,20 @@ frontend/.next/
 frontend/tsconfig.tsbuildinfo
 *.key
 
-# SESIS
+# SESIS / SmartNationDefense
 fernet.key
 .env
+
+# Flutter / Dart
+mobile/sesis_cop/.dart_tool/
+mobile/sesis_cop/.packages
+mobile/sesis_cop/build/
+mobile/sesis_cop/.flutter-plugins
+mobile/sesis_cop/.flutter-plugins-dependencies
+
+# YOLO model (binario descargado)
+backend/app/services/vision/models/yolov8n.pt
+
+# SSL certs (demo)
+infra/ssl/*.key
+infra/ssl/*.crt

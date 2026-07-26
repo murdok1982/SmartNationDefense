@@ -6,7 +6,11 @@ from datetime import datetime, timezone
 from sqlalchemy import DateTime, func
 from sqlalchemy.orm import Mapped, mapped_column
 
+from sqlalchemy.orm import declarative_base
+
 from app.db.session import get_db
+
+Base = declarative_base()
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)

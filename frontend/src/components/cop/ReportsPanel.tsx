@@ -1,7 +1,10 @@
 "use client";
 import { useState } from "react";
-import { FileText, Eye, Send, History, ChevronDown } from "lucide-react";
+import { FileText, Eye, Send, History } from "lucide-react";
 import { useCOPStore } from "@/store/cop-store";
+import { useApiData } from "@/lib/use-api-data";
+import { apiFetch, apiErrorMessage } from "@/lib/api";
+import { mapReport, type BackendReport } from "@/lib/mappers";
 
 type ReportType = "SITREP" | "SPOTREP" | "SALUTE" | "MEDEVAC";
 
@@ -10,12 +13,14 @@ const templates: Record<ReportType, { name: string; color: string; fields: { key
     name: "SITREP",
     color: "text-green-400 border-green-700 bg-green-900/20",
     fields: [
-      { key: "situation", label: "1. Situacion General", type: "textarea" },
-      { key: "enemy", label: "2. Enemigo", type: "textarea" },
-      { key: "friendly", label: "3. Fuerzas Propias", type: "textarea" },
-      { key: "weather", label: "4. Meteorologia", type: "text" },
-      { key: "logistics", label: "5. Logistica", type: "textarea" },
-      { key: "personnel", label: "6. Personal", type: "textarea" },
+      { key: "from_unit", label: "De (unidad)", type: "text" },
+      { key: "to_unit", label: "Para (unidad)", type: "text" },
+      { key: "enemy_forces", label: "1. Fuerzas Enemigas", type: "textarea" },
+      { key: "friendly_forces", label: "2. Fuerzas Propias", type: "textarea" },
+      { key: "weather_current", label: "3. Meteorologia Actual", type: "text" },
+      { key: "supply_status", label: "4. Estado Logistico", type: "textarea" },
+      { key: "personnel_strength", label: "5. Personal", type: "text" },
+      { key: "comms_status", label: "6. Comunicaciones", type: "text" },
     ],
   },
   SPOTREP: {
@@ -24,10 +29,12 @@ const templates: Record<ReportType, { name: string; color: string; fields: { key
     fields: [
       { key: "size", label: "1. Tamano", type: "text" },
       { key: "activity", label: "2. Actividad", type: "textarea" },
-      { key: "location", label: "3. Ubicacion", type: "text" },
-      { key: "unit", label: "4. Unidad", type: "text" },
-      { key: "time", label: "5. Hora", type: "text" },
+      { key: "location", label: "3. Ubicacion (grid)", type: "text" },
+      { key: "unit_identified", label: "4. Unidad", type: "text" },
+      { key: "time_observed", label: "5. Hora observacion", type: "text" },
       { key: "equipment", label: "6. Equipamiento", type: "textarea" },
+      { key: "narrative", label: "7. Narrativa", type: "textarea" },
+      { key: "assessment", label: "8. Evaluacion", type: "textarea" },
     ],
   },
   SALUTE: {
@@ -36,56 +43,128 @@ const templates: Record<ReportType, { name: string; color: string; fields: { key
     fields: [
       { key: "size", label: "S - Tamano", type: "text" },
       { key: "activity", label: "A - Actividad", type: "textarea" },
-      { key: "location", label: "L - Ubicacion", type: "text" },
+      { key: "location", label: "L - Ubicacion (grid)", type: "text" },
       { key: "unit", label: "U - Unidad", type: "text" },
       { key: "time", label: "T - Hora", type: "text" },
       { key: "equipment", label: "E - Equipamiento", type: "textarea" },
+      { key: "assessment", label: "Evaluacion", type: "textarea" },
     ],
   },
   MEDEVAC: {
     name: "MEDEVAC",
     color: "text-red-400 border-red-700 bg-red-900/20",
     fields: [
-      { key: "line1", label: "L1 - Ubicacion recogida", type: "text" },
-      { key: "line2", label: "L2 - Numero heridos", type: "text" },
-      { key: "line3", label: "L3 - Tipo de bajas", type: "text" },
-      { key: "line4", label: "L4 - Prioridad", type: "text" },
-      { key: "line5", label: "L5 - Tipo de aeronave", type: "text" },
-      { key: "line6", label: "L6 - Equipamiento especial", type: "text" },
-      { key: "line7", label: "L7 - Metodo de recogida", type: "text" },
-      { key: "line8", label: "L8 - NBC / Proteccion", type: "text" },
-      { key: "line9", label: "L9 - Descripcion terreno", type: "textarea" },
+      { key: "urgency", label: "Urgencia (URGENT/PRIORITY/ROUTINE)", type: "text" },
+      { key: "pickup_location", label: "L1 - Ubicacion recogida (grid)", type: "text" },
+      { key: "radio_freq", label: "L2 - Frecuencia radio", type: "text" },
+      { key: "casualty_count", label: "L3 - Numero de bajas", type: "text" },
+      { key: "security", label: "L4 - Seguridad (N/P/E/X)", type: "text" },
+      { key: "casualty_status", label: "L7 - Estado de bajas", type: "text" },
+      { key: "special_equipment", label: "L8 - Equipamiento especial", type: "text" },
+      { key: "terrain", label: "L9 - Descripcion terreno", type: "textarea" },
+      { key: "requesting_unit", label: "Unidad solicitante", type: "text" },
     ],
   },
 };
 
+function buildPayload(type: ReportType, formData: Record<string, string>, classification: string): Record<string, unknown> {
+  const base = { classification, created_by: "OPERATOR" };
+  switch (type) {
+    case "SITREP":
+      return {
+        ...base,
+        from_unit: formData.from_unit ?? "",
+        to_unit: formData.to_unit ?? "",
+        enemy_forces: formData.enemy_forces ?? "",
+        friendly_forces: formData.friendly_forces ?? "",
+        weather_current: formData.weather_current ?? "",
+        supply_status: formData.supply_status ?? "",
+        personnel_strength: formData.personnel_strength ?? "",
+        comms_status: formData.comms_status ?? "",
+      };
+    case "SPOTREP":
+      return {
+        ...base,
+        size: formData.size ?? "",
+        activity: formData.activity ?? "",
+        location: { grid: formData.location ?? "" },
+        unit_identified: formData.unit_identified ?? "",
+        time_observed: formData.time_observed || undefined,
+        equipment: formData.equipment ?? "",
+        narrative: formData.narrative ?? "",
+        assessment: formData.assessment ?? "",
+      };
+    case "SALUTE":
+      return {
+        ...base,
+        size: formData.size ?? "",
+        activity: formData.activity ?? "",
+        location: { grid: formData.location ?? "" },
+        unit: formData.unit ?? "",
+        time: formData.time || undefined,
+        equipment: formData.equipment ?? "",
+        assessment: formData.assessment ?? "",
+      };
+    case "MEDEVAC":
+      return {
+        urgency: formData.urgency || "ROUTINE",
+        pickup_location: { grid: formData.pickup_location ?? "" },
+        radio_freq: formData.radio_freq ?? "",
+        casualty_count: Number(formData.casualty_count) || 0,
+        security: formData.security || "N",
+        casualty_status: formData.casualty_status ?? "",
+        special_equipment: formData.special_equipment ?? "",
+        terrain: formData.terrain ?? "",
+        requesting_unit: formData.requesting_unit ?? "",
+        created_by: "OPERATOR",
+      };
+  }
+}
+
 export default function ReportsPanel() {
-  const { reports, addReport, classification } = useCOPStore();
+  const { reports, setReports, addReport, classification } = useCOPStore();
   const [selectedTemplate, setSelectedTemplate] = useState<ReportType | null>(null);
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [showPreview, setShowPreview] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const historyFetch = useApiData(
+    async () => {
+      const data = await apiFetch<BackendReport[]>("/api/v1/reports?limit=50");
+      setReports(data.map(mapReport));
+      return data.length;
+    },
+    { pollMs: 60000 },
+  );
 
   const handleTemplateSelect = (type: ReportType) => {
     setSelectedTemplate(type);
     setFormData({});
     setShowPreview(false);
+    setError(null);
   };
 
-  const handleGenerate = () => {
+  const handleGenerate = async () => {
     if (!selectedTemplate) return;
-    addReport({
-      id: `rep${Date.now()}`,
-      template: selectedTemplate,
-      classification,
-      content: formData,
-      timestamp: new Date().toISOString(),
-      author: "HQ",
-      status: "DRAFT",
-    });
-    setSelectedTemplate(null);
-    setFormData({});
-    setShowPreview(false);
+    setSubmitting(true);
+    setError(null);
+    try {
+      const result = await apiFetch<BackendReport>(`/api/v1/reports/${selectedTemplate.toLowerCase()}`, {
+        method: "POST",
+        body: buildPayload(selectedTemplate, formData, classification),
+      });
+      addReport(mapReport(result));
+      setSelectedTemplate(null);
+      setFormData({});
+      setShowPreview(false);
+      setShowHistory(true);
+    } catch (e) {
+      setError(apiErrorMessage(e));
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const templateList: ReportType[] = ["SITREP", "SPOTREP", "SALUTE", "MEDEVAC"];
@@ -111,26 +190,37 @@ export default function ReportsPanel() {
           >
             ← Volver a plantillas
           </button>
+          {historyFetch.loading && reports.length === 0 && (
+            <div className="text-xs font-mono text-gray-500 animate-pulse">Cargando historial...</div>
+          )}
+          {historyFetch.error && (
+            <div className="text-xs font-mono text-red-400">{historyFetch.error}</div>
+          )}
+          {!historyFetch.loading && !historyFetch.error && reports.length === 0 && (
+            <div className="text-xs font-mono text-gray-600">Sin reportes generados</div>
+          )}
           {reports.map(r => (
             <div key={r.id} className="text-xs font-mono p-2 rounded bg-gray-800/50 border border-gray-700">
-              <div className="flex items-center justify-between mb-0.5">
-                <span className="text-green-400 font-bold">{r.template}</span>
-                <span className={`text-[10px] px-1 py-0.5 rounded ${
-                  r.status === "SENT" ? "text-green-400 bg-green-900/20" : "text-yellow-400 bg-yellow-900/20"
+              <div className="flex items-center justify-between mb-1">
+                <span className={`font-bold ${
+                  r.template === "SITREP" ? "text-green-400" :
+                  r.template === "SPOTREP" ? "text-blue-400" :
+                  r.template === "SALUTE" ? "text-orange-400" : "text-red-400"
                 }`}>
-                  {r.status}
+                  {r.template}
+                </span>
+                <span className="text-[10px] text-gray-500">{r.classification}</span>
+              </div>
+              <div className="text-[10px] text-gray-400">{r.title}</div>
+              <div className="flex items-center justify-between mt-0.5">
+                <span className="text-[10px] text-gray-600">{r.author}</span>
+                <span className="text-[10px] text-gray-600">
+                  {r.timestamp ? new Date(r.timestamp).toISOString().slice(11, 16) : "--"}Z
                 </span>
               </div>
-              <div className="text-[10px] text-gray-500">
-                {new Date(r.timestamp).toISOString().slice(0, 16).replace("T", " ")}Z — {r.author}
-              </div>
-              <div className={`text-[10px] mt-0.5 px-1 py-0.5 rounded inline-block ${
-                r.classification === "SECRET" ? "text-red-400 bg-red-900/30" :
-                r.classification === "TOP SECRET" ? "text-purple-400 bg-purple-900/30" :
-                "text-yellow-400 bg-yellow-900/30"
-              }`}>
-                {r.classification}
-              </div>
+              <pre className="text-[9px] text-gray-500 mt-1 max-h-24 overflow-y-auto whitespace-pre-wrap">
+                {JSON.stringify(r.content, null, 1)}
+              </pre>
             </div>
           ))}
         </div>
@@ -172,6 +262,7 @@ export default function ReportsPanel() {
               </div>
             </div>
           ))}
+          {error && <div className="text-[10px] font-mono text-red-400">{error}</div>}
           <div className="flex gap-1">
             <button
               onClick={() => setShowPreview(false)}
@@ -180,10 +271,11 @@ export default function ReportsPanel() {
               Editar
             </button>
             <button
-              onClick={handleGenerate}
-              className="flex-1 bg-green-800 hover:bg-green-700 text-green-100 text-[10px] px-2 py-1 rounded flex items-center justify-center gap-1 transition-colors"
+              onClick={() => void handleGenerate()}
+              disabled={submitting}
+              className="flex-1 bg-green-800 hover:bg-green-700 disabled:opacity-50 text-green-100 text-[10px] px-2 py-1 rounded flex items-center justify-center gap-1 transition-colors"
             >
-              <Send size={10} /> Generar
+              <Send size={10} /> {submitting ? "Generando..." : "Generar"}
             </button>
           </div>
         </div>

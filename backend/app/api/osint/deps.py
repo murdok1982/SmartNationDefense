@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+from types import SimpleNamespace
 from typing import Annotated
 
 import redis.asyncio as aioredis
@@ -14,11 +16,84 @@ from app.db.models.osint.user import User
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
-async def get_token_blacklist() -> TokenBlacklist:
-    redis_client = await get_redis()
-    if token_blacklist._redis is None and redis_client:
-        token_blacklist._redis = redis_client
+
+# ---------------------------------------------------------------------------
+# Token blacklist — in-memory fallback if Redis is unavailable
+# ---------------------------------------------------------------------------
+
+
+class _TokenBlacklist:
+    def __init__(self):
+        self._redis = None
+        self._mem: dict[str, float] = {}
+
+    async def is_blacklisted(self, jti: str) -> bool:
+        if not jti:
+            return False
+        if self._redis is not None:
+            try:
+                return bool(await self._redis.exists(f"revoked:{jti}"))
+            except Exception:
+                pass
+        return jti in self._mem
+
+    async def is_user_revoked(self, sub: str) -> bool:
+        key = f"user_revoked:{sub}"
+        if self._redis is not None:
+            try:
+                return bool(await self._redis.exists(key))
+            except Exception:
+                pass
+        return key in self._mem
+
+    async def add(self, jti: str, exp: float) -> None:
+        ttl = max(1, int(exp - time.time()))
+        if self._redis is not None:
+            try:
+                await self._redis.setex(f"revoked:{jti}", ttl, "1")
+                return
+            except Exception:
+                pass
+        self._mem[jti] = exp
+
+    async def revoke_all_user_tokens(self, user_id: str, exp: float) -> None:
+        key = f"user_revoked:{user_id}"
+        ttl = max(1, int(exp - time.time()))
+        if self._redis is not None:
+            try:
+                await self._redis.setex(key, ttl, "1")
+                return
+            except Exception:
+                pass
+        self._mem[key] = exp
+
+
+token_blacklist = _TokenBlacklist()
+
+
+async def get_redis() -> aioredis.Redis | None:
+    try:
+        from app.db.redis_pool import get_redis_pool
+        return await get_redis_pool()
+    except Exception:
+        return None
+
+
+async def get_token_blacklist() -> _TokenBlacklist:
+    if token_blacklist._redis is None:
+        redis_client = await get_redis()
+        if redis_client is not None:
+            token_blacklist._redis = redis_client
     return token_blacklist
+
+
+def verify_token(token: str) -> SimpleNamespace:
+    try:
+        payload = decode_token(token)
+        return SimpleNamespace(**payload)
+    except HTTPException:
+        raise ValueError("Invalid token")
+
 
 async def get_current_user(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],

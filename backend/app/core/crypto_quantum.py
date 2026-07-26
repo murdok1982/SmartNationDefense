@@ -7,6 +7,10 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 
+class QuantumCryptoUnavailable(RuntimeError):
+    """Las librerias de criptografia post-cuantica (pqcrypto) no estan instaladas."""
+
+
 class QuantumSafeCrypto:
     def __init__(self):
         self._kyber_available = False
@@ -57,7 +61,9 @@ class QuantumSafeCrypto:
         if self._dilithium_available:
             import pqcrypto.sign.dilithium3
             return pqcrypto.sign.dilithium3.sign(data, private_key)
-        return b""
+        raise QuantumCryptoUnavailable(
+            "Firma post-cuantica no disponible: instale pqcrypto (dilithium3)"
+        )
 
     async def verify(self, data: bytes, signature: bytes, public_key: bytes) -> bool:
         if self._dilithium_available:
@@ -67,7 +73,9 @@ class QuantumSafeCrypto:
                 return True
             except Exception:
                 return False
-        return False
+        raise QuantumCryptoUnavailable(
+            "Verificacion post-cuantica no disponible: instale pqcrypto (dilithium3)"
+        )
 
 
 qcrypto = QuantumSafeCrypto()

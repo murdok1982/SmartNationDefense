@@ -1,7 +1,8 @@
 "use client";
 import dynamic from "next/dynamic";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useCOPStore } from "@/store/cop-store";
+import { useAuthStore } from "@/store/auth-store";
 import ClassificationBanner from "./ClassificationBanner";
 import StatusBar from "./StatusBar";
 import MissionClock from "./MissionClock";
@@ -20,15 +21,16 @@ import PlanningPanel from "./PlanningPanel";
 import VoiceCommand from "./VoiceCommand";
 import TacticalMapEnhanced from "./TacticalMapEnhanced";
 import MultiMonitor from "./MultiMonitor";
+import MavenPanel from "./MavenPanel";
 import {
   Map, MessageSquare, Mountain, Package, Clock, FileText,
-  Target, Mic, Layers, Layout, ChevronLeft, ChevronRight,
+  Target, Mic, Layers, Layout, Satellite, ChevronLeft, ChevronRight,
 } from "lucide-react";
 import type { UnitPosition } from "@/lib/cop-types";
 
 const TacticalMap = dynamic(() => import("./TacticalMap"), { ssr: false });
 
-type PanelId = "overview" | "messages" | "terrain" | "logistics" | "aar" | "reports" | "threat-pred" | "planning" | "voice" | "map-enhanced" | "multi-monitor";
+type PanelId = "overview" | "messages" | "terrain" | "logistics" | "aar" | "reports" | "threat-pred" | "planning" | "voice" | "map-enhanced" | "multi-monitor" | "maven";
 
 const panels: { id: PanelId; label: string; icon: typeof Map }[] = [
   { id: "overview", label: "Vista General", icon: Map },
@@ -42,12 +44,24 @@ const panels: { id: PanelId; label: string; icon: typeof Map }[] = [
   { id: "aar", label: "AAR", icon: Clock },
   { id: "voice", label: "Voz", icon: Mic },
   { id: "multi-monitor", label: "Multi-Monitor", icon: Layout },
+  { id: "maven", label: "Maven Fusion", icon: Satellite },
 ];
 
 export default function COPPage() {
-  const { state } = useCOPStore();
+  const { state, setClassification, fetchAll, loading, error } = useCOPStore();
+  const { clearance } = useAuthStore();
   const [activePanel, setActivePanel] = useState<PanelId>("overview");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  useEffect(() => {
+    if (clearance) setClassification(clearance.replace("_", " "));
+  }, [clearance, setClassification]);
+
+  useEffect(() => {
+    void fetchAll();
+    const interval = setInterval(() => void fetchAll(), 60000);
+    return () => clearInterval(interval);
+  }, [fetchAll]);
 
   const renderPanel = () => {
     switch (activePanel) {
@@ -62,6 +76,7 @@ export default function COPPage() {
       case "planning": return <PlanningPanel />;
       case "voice": return <VoiceCommand />;
       case "multi-monitor": return <MultiMonitor />;
+      case "maven": return <MavenPanel />;
       default: return null;
     }
   };
@@ -115,6 +130,9 @@ export default function COPPage() {
               <div className="col-span-3 flex flex-col gap-2">
                 <div className="bg-gray-900 rounded p-2 border border-gray-700" style={{ minHeight: "300px" }}>
                   <div className="text-xs font-bold text-gray-400 mb-1">MAPA TACTICO</div>
+                  {error && (
+                    <div className="text-[10px] font-mono text-red-400 mb-1">{error}</div>
+                  )}
                   <div className="rounded overflow-hidden" style={{ height: "260px" }}>
                     <TacticalMap units={state.units as UnitPosition[]} />
                   </div>
@@ -127,6 +145,9 @@ export default function COPPage() {
                 <div className="bg-gray-900 rounded p-2 border border-gray-700">
                   <div className="text-xs font-bold text-gray-400 mb-1">LINEA TEMPORAL DE MISION</div>
                   <div className="flex flex-wrap gap-1 text-xs font-mono text-gray-500">
+                    {state.timeline.length === 0 && (
+                      <span className="text-gray-600">Sin eventos de mision registrados</span>
+                    )}
                     {state.timeline.map((ev, idx) => (
                       <span key={ev.id} className="flex items-center gap-1">
                         {idx > 0 && <span className="text-gray-600 mx-1">|</span>}
@@ -152,15 +173,26 @@ export default function COPPage() {
                 <div className="bg-gray-900 rounded p-2 border border-gray-700">
                   <div className="text-xs font-bold text-gray-400 mb-1">MALLA DE SENSORES</div>
                   <div className="space-y-1">
+                    {loading && state.sensors.length === 0 && (
+                      <div className="text-xs font-mono text-gray-500 animate-pulse">Cargando sensores...</div>
+                    )}
+                    {error && (
+                      <div className="text-xs font-mono text-red-400">{error}</div>
+                    )}
+                    {!loading && !error && state.sensors.length === 0 && (
+                      <div className="text-xs font-mono text-gray-600">Sin sensores registrados</div>
+                    )}
                     {state.sensors.map((s) => (
                       <div key={s.id} className="flex items-center justify-between text-xs font-mono">
                         <span className={
-                          s.status === "online" ? "text-green-400" :
-                          s.status === "low_battery" ? "text-yellow-400" : "text-red-400"
+                          s.status === "active" || s.status === "online" ? "text-green-400" :
+                          s.status === "low_battery" || s.status === "degraded" ? "text-yellow-400" : "text-red-400"
                         }>
                           {s.type}
                         </span>
-                        <span className="text-gray-500">{s.battery}%</span>
+                        <span className="text-gray-500">
+                          {s.battery !== undefined ? `${s.battery}%` : s.status.toUpperCase()}
+                        </span>
                       </div>
                     ))}
                   </div>

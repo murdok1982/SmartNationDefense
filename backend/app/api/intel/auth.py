@@ -39,7 +39,7 @@ from app.core.security import (
     create_access_token,
     create_refresh_token,
     decode_token,
-    get_password_hash,
+    hash_password,
     verify_password,
 )
 from app.db.models.intel.auth import MFARecoveryCode
@@ -160,7 +160,7 @@ async def register(
         )
     user = User(
         email=body.email,
-        hashed_password=get_password_hash(body.password),
+        hashed_password=hash_password(body.password),
     )
     db.add(user)
     await db.commit()

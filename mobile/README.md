@@ -53,6 +53,31 @@ flutter pub get
 flutter run
 ```
 
+### Configuración por entorno (`--dart-define`)
+
+| Variable | Descripción | Defecto |
+|----------|-------------|---------|
+| `API_BASE_URL` | URL base del API REST | `http://10.0.2.2:8000` (emulador Android → host) |
+| `WS_URL` | URL del WebSocket | `ws://10.0.2.2:8000/ws` |
+| `MESH_PSK` | Clave precompartida de la malla (HMAC-SHA256). **Sin ella la malla no arranca.** | vacía |
+| `TLS_PINS` | Fingerprints SHA-256 del certificado TLS (hex, separados por comas). Vacío = validación TLS estándar del sistema | vacío |
+
+Ejemplo:
+
+```bash
+flutter run \
+  --dart-define=API_BASE_URL=https://api.ejemplo.mil \
+  --dart-define=MESH_PSK=clave-compartida-secreta \
+  --dart-define=TLS_PINS=ab12cd34...,ef56ab78...
+```
+
+Para obtener el fingerprint del certificado del servidor:
+
+```bash
+openssl s_client -connect api.ejemplo.mil:443 </dev/null 2>/dev/null \
+  | openssl x509 -outform DER | openssl dgst -sha256
+```
+
 ### Build for Android
 ```bash
 flutter build apk --release

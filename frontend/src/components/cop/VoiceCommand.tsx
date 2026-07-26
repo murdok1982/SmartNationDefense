@@ -1,19 +1,17 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
-import { Mic, MicOff, Radio, ChevronDown, ChevronUp } from "lucide-react";
+import { useState, useRef } from "react";
+import { Mic, ChevronDown, ChevronUp, MicOff } from "lucide-react";
 import { useCOPStore } from "@/store/cop-store";
+import { apiFetch, apiErrorMessage } from "@/lib/api";
 
 const availableCommands = [
   { command: "Enviar mensaje a [unidad]", category: "COMMS" },
-  { command: "Generar SITREP", category: "REPORTES" },
-  { command: "Generar SPOTREP", category: "REPORTES" },
+  { command: "Generar [SITREP|SPOTREP]", category: "REPORTES" },
   { command: "Mostrar mapa de [zona]", category: "MAPA" },
   { command: "Alerta maxima", category: "ALERTAS" },
   { command: "Solicitar MEDEVAC", category: "EMERGENCIA" },
-  { command: "Estado de unidades", category: "C2" },
-  { command: "Analisis de terreno", category: "TERRAIN" },
-  { command: "Prediccion de amenazas", category: "INTEL" },
-  { command: "Cambiar clasificacion a [nivel]", category: "SISTEMA" },
+  { command: "Estado de [unidad]", category: "C2" },
+  { command: "Situacion actual", category: "C2" },
 ];
 
 const statusColors: Record<string, string> = {
@@ -22,48 +20,111 @@ const statusColors: Record<string, string> = {
   PROCESSING: "text-yellow-400",
 };
 
+interface SpeechRecognitionResultItem {
+  transcript: string
+}
+
+interface SpeechRecognitionResultList {
+  readonly length: number
+  [index: number]: { [index: number]: SpeechRecognitionResultItem }
+}
+
+interface SpeechRecognitionEventLike {
+  results: SpeechRecognitionResultList
+}
+
+interface SpeechRecognitionLike {
+  lang: string
+  interimResults: boolean
+  maxAlternatives: number
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null
+  onerror: (() => void) | null
+  onend: (() => void) | null
+  start: () => void
+  stop: () => void
+}
+
+type SpeechRecognitionCtor = new () => SpeechRecognitionLike;
+
+function getSpeechRecognition(): SpeechRecognitionCtor | null {
+  if (typeof window === "undefined") return null;
+  const w = window as unknown as {
+    SpeechRecognition?: SpeechRecognitionCtor
+    webkitSpeechRecognition?: SpeechRecognitionCtor
+  };
+  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
+}
+
+interface VoiceCommandResponse {
+  command_id: string
+  transcript: string
+  command_type: string
+  execution_result: { status: string; message: string }
+  confidence: number
+  timestamp: string
+}
+
+const WAVEFORM_HEIGHTS = [4, 8, 14, 20, 12, 6, 16, 22, 10, 5, 18, 24, 12, 7, 15, 21, 9, 4, 13, 19];
+
 export default function VoiceCommand() {
   const { voiceCommands, voiceStatus, setVoiceStatus, addVoiceCommand } = useCOPStore();
   const [showCommands, setShowCommands] = useState(false);
-  const [waveformBars, setWaveformBars] = useState<number[]>(Array(20).fill(2));
-  const animRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
 
-  useEffect(() => {
-    if (voiceStatus === "LISTENING") {
-      animRef.current = setInterval(() => {
-        setWaveformBars(Array(20).fill(0).map(() => Math.random() * 20 + 2));
-      }, 100);
-    } else {
-      if (animRef.current) clearInterval(animRef.current);
-      setWaveformBars(Array(20).fill(2));
+  const RecognitionCtor = getSpeechRecognition();
+  const supported = RecognitionCtor !== null;
+
+  const sendCommand = async (transcript: string) => {
+    setVoiceStatus("PROCESSING");
+    try {
+      const result = await apiFetch<VoiceCommandResponse>("/api/v1/voice/command", {
+        method: "POST",
+        body: { text_command: transcript, language: "es", user_id: "OPERATOR" },
+      });
+      addVoiceCommand({
+        id: result.command_id,
+        command: result.transcript,
+        timestamp: result.timestamp,
+        status: result.command_type === "UNKNOWN" ? "UNKNOWN" : "SUCCESS",
+        resultMessage: result.execution_result.message,
+      });
+    } catch (e) {
+      addVoiceCommand({
+        id: `vc${Date.now()}`,
+        command: transcript,
+        timestamp: new Date().toISOString(),
+        status: "FAILED",
+        resultMessage: apiErrorMessage(e),
+      });
+    } finally {
+      setVoiceStatus("IDLE");
     }
-    return () => { if (animRef.current) clearInterval(animRef.current); };
-  }, [voiceStatus]);
+  };
 
   const toggleMic = () => {
-    if (voiceStatus === "IDLE") {
-      setVoiceStatus("LISTENING");
-      setTimeout(() => {
-        setVoiceStatus("PROCESSING");
-        const commands = [
-          "Enviar mensaje a Alfa-1",
-          "Generar SITREP",
-          "Mostrar mapa de sector Delta",
-          "Estado de unidades",
-          "Prediccion de amenazas",
-        ];
-        const cmd = commands[Math.floor(Math.random() * commands.length)];
-        setTimeout(() => {
-          addVoiceCommand({
-            id: `vc${Date.now()}`,
-            command: cmd,
-            timestamp: new Date().toISOString(),
-            status: "SUCCESS",
-          });
-          setVoiceStatus("IDLE");
-        }, 1500);
-      }, 3000);
-    }
+    if (!supported || voiceStatus !== "IDLE") return;
+    setError(null);
+    const recognition = new RecognitionCtor();
+    recognition.lang = "es-ES";
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+    recognition.onresult = (event) => {
+      const transcript = event.results[0]?.[0]?.transcript ?? "";
+      if (transcript) void sendCommand(transcript);
+      else setVoiceStatus("IDLE");
+    };
+    recognition.onerror = () => {
+      setError("Error en el reconocimiento de voz");
+      setVoiceStatus("IDLE");
+    };
+    recognition.onend = () => {
+      recognitionRef.current = null;
+      if (useCOPStore.getState().voiceStatus === "LISTENING") setVoiceStatus("IDLE");
+    };
+    recognitionRef.current = recognition;
+    setVoiceStatus("LISTENING");
+    recognition.start();
   };
 
   return (
@@ -77,42 +138,56 @@ export default function VoiceCommand() {
       </div>
 
       <div className="flex-1 flex flex-col items-center justify-center p-4">
-        <button
-          onClick={toggleMic}
-          disabled={voiceStatus !== "IDLE"}
-          className={`w-20 h-20 rounded-full flex items-center justify-center transition-all ${
-            voiceStatus === "IDLE"
-              ? "bg-gray-800 border-2 border-gray-600 hover:border-green-400 hover:bg-gray-700"
-              : voiceStatus === "LISTENING"
-                ? "bg-green-900/30 border-2 border-green-400 animate-pulse"
-                : "bg-yellow-900/30 border-2 border-yellow-400 animate-pulse"
-          }`}
-        >
-          {voiceStatus === "IDLE" ? (
-            <Mic size={32} className="text-gray-400" />
-          ) : (
-            <Mic size={32} className={voiceStatus === "LISTENING" ? "text-green-400" : "text-yellow-400"} />
-          )}
-        </button>
-
-        <div className="flex items-end gap-0.5 h-8 mt-3">
-          {waveformBars.map((h, i) => (
-            <div
-              key={i}
-              className={`w-1 rounded-t transition-all duration-100 ${
-                voiceStatus === "LISTENING" ? "bg-green-400" :
-                voiceStatus === "PROCESSING" ? "bg-yellow-400" : "bg-gray-700"
+        {!supported ? (
+          <div className="text-center space-y-2">
+            <MicOff size={32} className="text-gray-600 mx-auto" />
+            <div className="text-[10px] font-mono text-gray-500">
+              Reconocimiento de voz no disponible en este navegador.
+            </div>
+            <div className="text-[10px] font-mono text-gray-600">
+              Se requiere Web Speech API (Chrome / Edge).
+            </div>
+          </div>
+        ) : (
+          <>
+            <button
+              onClick={toggleMic}
+              disabled={voiceStatus !== "IDLE"}
+              className={`w-20 h-20 rounded-full flex items-center justify-center transition-all ${
+                voiceStatus === "IDLE"
+                  ? "bg-gray-800 border-2 border-gray-600 hover:border-green-400 hover:bg-gray-700"
+                  : voiceStatus === "LISTENING"
+                    ? "bg-green-900/30 border-2 border-green-400 animate-pulse"
+                    : "bg-yellow-900/30 border-2 border-yellow-400 animate-pulse"
               }`}
-              style={{ height: `${h}px` }}
-            />
-          ))}
-        </div>
+            >
+              <Mic size={32} className={
+                voiceStatus === "IDLE" ? "text-gray-400" :
+                voiceStatus === "LISTENING" ? "text-green-400" : "text-yellow-400"
+              } />
+            </button>
 
-        <div className="text-[10px] text-gray-500 mt-2">
-          {voiceStatus === "IDLE" && "Pulsar para activar"}
-          {voiceStatus === "LISTENING" && "Escuchando comando..."}
-          {voiceStatus === "PROCESSING" && "Procesando..."}
-        </div>
+            <div className="flex items-end gap-0.5 h-8 mt-3">
+              {WAVEFORM_HEIGHTS.map((h, i) => (
+                <div
+                  key={i}
+                  className={`w-1 rounded-t transition-all duration-300 ${
+                    voiceStatus === "LISTENING" ? "bg-green-400 animate-pulse" :
+                    voiceStatus === "PROCESSING" ? "bg-yellow-400" : "bg-gray-700"
+                  }`}
+                  style={{ height: `${voiceStatus === "IDLE" ? 2 : h}px` }}
+                />
+              ))}
+            </div>
+
+            <div className="text-[10px] text-gray-500 mt-2">
+              {voiceStatus === "IDLE" && "Pulsar para activar"}
+              {voiceStatus === "LISTENING" && "Escuchando comando..."}
+              {voiceStatus === "PROCESSING" && "Procesando..."}
+            </div>
+            {error && <div className="text-[10px] font-mono text-red-400 mt-1">{error}</div>}
+          </>
+        )}
       </div>
 
       <div className="border-t border-gray-700">
@@ -138,13 +213,21 @@ export default function VoiceCommand() {
       <div className="border-t border-gray-700 p-2">
         <div className="text-[10px] text-gray-500 font-bold mb-1">HISTORIAL</div>
         <div className="space-y-0.5 max-h-24 overflow-y-auto">
+          {voiceCommands.length === 0 && (
+            <div className="text-[10px] font-mono text-gray-600">Sin comandos procesados</div>
+          )}
           {voiceCommands.map(vc => (
-            <div key={vc.id} className="text-[10px] font-mono flex items-center gap-1">
-              <span className={`w-1.5 h-1.5 rounded-full ${
-                vc.status === "SUCCESS" ? "bg-green-400" : vc.status === "FAILED" ? "bg-red-400" : "bg-gray-600"
-              }`} />
-              <span className="text-gray-400">{vc.command}</span>
-              <span className="text-gray-600 ml-auto">{new Date(vc.timestamp).toISOString().slice(11, 16)}Z</span>
+            <div key={vc.id} className="text-[10px] font-mono">
+              <div className="flex items-center gap-1">
+                <span className={`w-1.5 h-1.5 rounded-full ${
+                  vc.status === "SUCCESS" ? "bg-green-400" : vc.status === "FAILED" ? "bg-red-400" : "bg-gray-600"
+                }`} />
+                <span className="text-gray-400">{vc.command}</span>
+                <span className="text-gray-600 ml-auto">{new Date(vc.timestamp).toISOString().slice(11, 16)}Z</span>
+              </div>
+              {vc.resultMessage && (
+                <div className="text-gray-600 ml-3">{vc.resultMessage}</div>
+              )}
             </div>
           ))}
         </div>

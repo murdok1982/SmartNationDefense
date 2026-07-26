@@ -3,12 +3,12 @@ export interface Alert {
   source: string; message: string; timestamp: string; acknowledged: boolean
 }
 export interface UnitPosition { id: string; name: string; type: string; lat: number; lon: number; status: string }
-export interface IntelReport { id: string; title: string; classification: string; source: string; confidence: number; timestamp: string }
-export interface ThreatAssessment { id: string; target: string; severity: number; confidence: number; recommended_action: string }
+export interface IntelReport { id: string; title: string; classification: string; source: string; confidence: number | null; timestamp: string }
+export interface ThreatAssessment { id: string; target: string; severity: number; confidence: number | null; recommended_action: string }
 export interface BDAReport { strike_id: string; effectiveness: number; collateral: boolean; sources: string[] }
 export interface AgentReport { id: string; agent: string; mission: string; status: string; location?: string }
 export interface PSYOPSMessage { id: string; campaign: string; message: string; effectiveness: number }
-export interface SensorNode { id: string; type: string; battery: number; status: string; last_reading?: string }
+export interface SensorNode { id: string; type: string; battery?: number; status: string; last_reading?: string }
 export interface WargamingResult { coa: string; success_probability: number; casualties: number; duration_hours: number }
 export interface MissionEvent { id: string; type: string; description: string; timestamp: string; severity: string }
 export interface COPModule { id: string; name: string; status: "operational" | "degraded" | "offline"; color: string }
@@ -30,6 +30,7 @@ export interface TacticalMessage {
   timestamp: string
   acknowledged: boolean
   classification: string
+  threadId?: string
   replyTo?: string
 }
 
@@ -41,29 +42,46 @@ export interface Conversation {
   unreadCount: number
 }
 
+export interface TerrainLOSResult {
+  visible: boolean
+  distanceKm: number
+  minClearanceM: number
+  obstructions: { distanceKm: number; blockageM: number }[]
+}
+
+export interface TerrainRouteResult {
+  distanceKm: number
+  estimatedTimeMin: number
+  difficulty: string
+  obstacles: string[]
+  recommendations: string[]
+}
+
+export interface TerrainAreaResult {
+  trafficability: Record<string, { accessible_pct: number }>
+  keyTerrain: { location: { lat: number; lon: number }; elevation_m: number; strategic_value: string; description: string }[]
+  obstacles: { type: string; description: string; severity: string }[]
+  recommendations: string[]
+}
+
 export interface TerrainAnalysisData {
   id: string
   type: "LOS" | "ROUTE" | "AREA"
   startPoint: [number, number]
   endPoint?: [number, number]
-  results: {
-    visible: boolean
-    distance: number
-    elevationGain: number
-    estimatedTime: number
-    obstacles: string[]
-  }
+  los?: TerrainLOSResult
+  route?: TerrainRouteResult
+  area?: TerrainAreaResult
 }
 
 export interface Supply {
   id: string
-  type: "AMMO" | "FUEL" | "RATION" | "MEDICAL" | "EQUIPMENT"
-  name: string
+  type: string
   quantity: number
-  maxQuantity: number
   unit: string
-  status: "AVAILABLE" | "REQUESTED" | "IN_TRANSIT" | "DELIVERED"
-  priority: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW"
+  status: string
+  priority: string
+  minThreshold: number
 }
 
 export interface Personnel {
@@ -71,8 +89,10 @@ export interface Personnel {
   name: string
   rank: string
   unit: string
-  status: "ACTIVE" | "WIA" | "KIA" | "MIA" | "OFF_DUTY"
+  status: string
   lastCheckin: string
+  medicalStatus?: string
+  role?: string
 }
 
 export interface MEDEVACRequest {
@@ -90,12 +110,12 @@ export interface MaintenanceRequest {
   id: string
   equipment: string
   description: string
-  priority: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW"
-  status: "PENDING" | "IN_PROGRESS" | "COMPLETED"
+  priority: string
+  status: string
   timestamp: string
 }
 
-export interface TimelineEvent {
+export interface AARTimelineEvent {
   id: string
   timestamp: string
   description: string
@@ -103,54 +123,40 @@ export interface TimelineEvent {
   actor: string
 }
 
-export interface Objective {
+export interface AARObjective {
   id: string
   description: string
-  status: "ACHIEVED" | "PARTIAL" | "FAILED" | "PENDING"
+  status: string
 }
 
-export interface LessonLearned {
+export interface AARLesson {
   id: string
   category: string
   description: string
-  impact: "HIGH" | "MEDIUM" | "LOW"
+  impact: string
 }
 
 export interface AfterActionReview {
   id: string
   operationName: string
   startTime: string
-  endTime: string
-  timeline: TimelineEvent[]
-  objectives: Objective[]
-  lessonsLearned: LessonLearned[]
+  endTime: string | null
+  timeline: AARTimelineEvent[]
+  objectives: AARObjective[]
+  lessonsLearned: AARLesson[]
   recommendations: string[]
-  status: "IN_PROGRESS" | "FINALIZED"
-}
-
-export interface ReportTemplate {
-  id: string
-  type: "SITREP" | "SPOTREP" | "SALUTE" | "MEDEVAC"
-  name: string
-  fields: ReportField[]
-}
-
-export interface ReportField {
-  key: string
-  label: string
-  type: "text" | "textarea" | "select"
-  required: boolean
-  options?: string[]
+  status: string
 }
 
 export interface GeneratedReport {
   id: string
   template: string
+  title: string
   classification: string
-  content: Record<string, string>
+  content: Record<string, unknown>
   timestamp: string
   author: string
-  status: "DRAFT" | "SENT"
+  status: string
 }
 
 export interface ThreatPredictionData {
@@ -168,13 +174,10 @@ export interface ThreatPredictionData {
 export interface OPORD {
   id: string
   operationName: string
-  paragraph1_situation: string
-  paragraph2_mission: string
-  paragraph3_execution: string
-  paragraph4_sustainment: string
-  paragraph5_commandSignal: string
-  status: "DRAFT" | "APPROVED" | "DISTRIBUTED"
+  classification: string
+  status: string
   createdAt: string
+  paragraphs: Record<string, Record<string, unknown>>
 }
 
 export interface COA {
@@ -185,15 +188,52 @@ export interface COA {
   risk: number
   resources: string
   duration: string
+  scores: Record<string, number>
 }
 
-export interface RiskEntry {
+export interface COAEvaluation {
+  coa_id: string
+  name: string
+  scores: Record<string, number>
+  total_score: number
+}
+
+export interface COAComparison {
+  criteria: string[]
+  coa_evaluations: COAEvaluation[]
+  recommendation: string
+}
+
+export interface OPORDRisk {
   id: string
+  category: string
   hazard: string
-  probability: 1 | 2 | 3 | 4 | 5
-  impact: 1 | 2 | 3 | 4 | 5
+  probability: string
+  severity: string
+  risk_level: string
   mitigation: string
-  residualRisk: number
+  residual_risk: string
+}
+
+export interface OPORDRiskAssessment {
+  opord_id: string
+  operation_name: string
+  risks: OPORDRisk[]
+  overall_risk_level: string
+  risk_matrix: { high: number; medium: number; low: number }
+  recommendations: string[]
+}
+
+export interface SyncMatrixEntry {
+  phase: string
+  tasks: Record<string, { description: string; responsible: string; start_condition: string; end_condition: string }>
+}
+
+export interface OPORDSyncMatrix {
+  opord_id: string
+  operation_name: string
+  phases: { name: string; duration_h?: number }[]
+  synchronization: SyncMatrixEntry[]
 }
 
 export interface VoiceCommandEntry {
@@ -201,6 +241,7 @@ export interface VoiceCommandEntry {
   command: string
   timestamp: string
   status: "SUCCESS" | "FAILED" | "UNKNOWN"
+  resultMessage?: string
 }
 
 export interface WidgetConfig {
@@ -212,6 +253,21 @@ export interface WidgetConfig {
   width: number
   height: number
   minimized: boolean
+}
+
+export interface PlanningEntry {
+  id: string
+  type: "OPORD" | "COA" | "FRAGORD"
+  title: string
+  status: string
+  timestamp: string
+}
+
+export interface LogisticsEntry {
+  id: string
+  type: "SUPPLY" | "PERSONNEL" | "MEDEVAC" | "MAINTENANCE"
+  description: string
+  status: string
 }
 
 export interface DashboardLayout {

@@ -1,38 +1,117 @@
 "use client";
 import { useState } from "react";
-import { Crosshair, Route, Mountain, Download, Trash2, Eye, EyeOff } from "lucide-react";
+import { Crosshair, Route, Mountain, Trash2, Eye, EyeOff } from "lucide-react";
 import { useCOPStore } from "@/store/cop-store";
+import { apiFetch, apiErrorMessage } from "@/lib/api";
 import type { TerrainAnalysisData } from "@/lib/cop-types";
 
+interface LOSResponse {
+  visible: boolean
+  distance_km: number
+  min_clearance_m: number
+  obstructions: { distance_km: number; blockage_m: number }[]
+}
+
+interface RouteResponse {
+  total_distance_km: number
+  estimated_time_min: number
+  difficulty: string
+  obstacles: { segment: number; obstacle: string }[]
+  recommendations: string[]
+}
+
+interface AreaResponse {
+  trafficability: Record<string, { accessible_pct: number }>
+  key_terrain: { location: { lat: number; lon: number }; elevation_m: number; strategic_value: string; description: string }[]
+  obstacles: { type: string; description: string; severity: string }[]
+  recommendations: string[]
+}
+
+function parsePoint(input: string): [number, number] | null {
+  const parts = input.split(",").map(s => Number(s.trim()));
+  if (parts.length !== 2 || parts.some(Number.isNaN)) return null;
+  return [parts[0], parts[1]];
+}
+
 export default function TerrainAnalysis() {
-  const { terrainAnalyses, addTerrainAnalysis } = useCOPStore();
+  const { terrainAnalyses, addTerrainAnalysis, clearTerrainAnalyses } = useCOPStore();
   const [tool, setTool] = useState<"LOS" | "ROUTE" | "AREA" | null>(null);
   const [startPoint, setStartPoint] = useState("");
   const [endPoint, setEndPoint] = useState("");
+  const [running, setRunning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const runAnalysis = () => {
-    if (!tool || !startPoint) return;
-    const start = startPoint.split(",").map(Number) as [number, number];
-    const end = endPoint ? endPoint.split(",").map(Number) as [number, number] : undefined;
-    const distance = end
-      ? Math.sqrt(Math.pow((end[0] - start[0]) * 111, 2) + Math.pow((end[1] - start[1]) * 85, 2))
-      : 0;
-    const analysis: TerrainAnalysisData = {
-      id: `ta${Date.now()}`,
-      type: tool,
-      startPoint: start,
-      endPoint: end,
-      results: {
-        visible: tool === "LOS" ? Math.random() > 0.3 : true,
-        distance: Math.round(distance * 10) / 10,
-        elevationGain: Math.round(Math.random() * 500 + 50),
-        estimatedTime: Math.round(distance * 15 + 30),
-        obstacles: tool === "LOS" ? ["Cresta en 2.3km", "Vegetacion densa"] : ["Rio en waypoint 2", "Zona urbana"],
-      },
-    };
-    addTerrainAnalysis(analysis);
-    setStartPoint("");
-    setEndPoint("");
+  const runAnalysis = async () => {
+    if (!tool) return;
+    const start = parsePoint(startPoint);
+    if (!start) {
+      setError("Coordenadas de inicio invalidas (formato: lat,lon)");
+      return;
+    }
+    const end = tool !== "AREA" ? parsePoint(endPoint) : null;
+    if (tool !== "AREA" && !end) {
+      setError("Coordenadas de fin invalidas (formato: lat,lon)");
+      return;
+    }
+
+    setRunning(true);
+    setError(null);
+    try {
+      const id = `ta${Date.now()}`;
+      if (tool === "LOS" && end) {
+        const r = await apiFetch<LOSResponse>("/api/v1/terrain/line-of-sight", {
+          method: "POST",
+          body: { observer: { lat: start[0], lon: start[1] }, target: { lat: end[0], lon: end[1] } },
+        });
+        const analysis: TerrainAnalysisData = {
+          id, type: "LOS", startPoint: start, endPoint: end,
+          los: {
+            visible: r.visible,
+            distanceKm: r.distance_km,
+            minClearanceM: r.min_clearance_m,
+            obstructions: r.obstructions.map(o => ({ distanceKm: o.distance_km, blockageM: o.blockage_m })),
+          },
+        };
+        addTerrainAnalysis(analysis);
+      } else if (tool === "ROUTE" && end) {
+        const r = await apiFetch<RouteResponse>("/api/v1/terrain/route-analysis", {
+          method: "POST",
+          body: { start: { lat: start[0], lon: start[1] }, end: { lat: end[0], lon: end[1] }, vehicle_type: "INFANTRY" },
+        });
+        const analysis: TerrainAnalysisData = {
+          id, type: "ROUTE", startPoint: start, endPoint: end,
+          route: {
+            distanceKm: r.total_distance_km,
+            estimatedTimeMin: r.estimated_time_min,
+            difficulty: r.difficulty,
+            obstacles: r.obstacles.map(o => o.obstacle),
+            recommendations: r.recommendations,
+          },
+        };
+        addTerrainAnalysis(analysis);
+      } else {
+        const r = await apiFetch<AreaResponse>("/api/v1/terrain/terrain-analysis", {
+          method: "POST",
+          body: { center_lat: start[0], center_lon: start[1], radius_km: 10 },
+        });
+        const analysis: TerrainAnalysisData = {
+          id, type: "AREA", startPoint: start,
+          area: {
+            trafficability: r.trafficability,
+            keyTerrain: r.key_terrain,
+            obstacles: r.obstacles,
+            recommendations: r.recommendations,
+          },
+        };
+        addTerrainAnalysis(analysis);
+      }
+      setStartPoint("");
+      setEndPoint("");
+    } catch (e) {
+      setError(apiErrorMessage(e));
+    } finally {
+      setRunning(false);
+    }
   };
 
   const tools = [
@@ -55,7 +134,7 @@ export default function TerrainAnalysis() {
             return (
               <button
                 key={t.id}
-                onClick={() => setTool(t.id)}
+                onClick={() => { setTool(t.id); setError(null); }}
                 className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded border transition-colors ${
                   tool === t.id
                     ? "bg-green-900/30 border-green-700 text-green-400"
@@ -75,7 +154,7 @@ export default function TerrainAnalysis() {
               <input
                 value={startPoint}
                 onChange={e => setStartPoint(e.target.value)}
-                placeholder="Inicio (lat,lon)"
+                placeholder={tool === "AREA" ? "Centro (lat,lon)" : "Inicio (lat,lon)"}
                 className="flex-1 bg-gray-800 text-gray-300 text-[10px] rounded px-2 py-1 border border-gray-700"
               />
               <button
@@ -101,11 +180,13 @@ export default function TerrainAnalysis() {
                 </button>
               </div>
             )}
+            {error && <div className="text-[10px] font-mono text-red-400">{error}</div>}
             <button
-              onClick={runAnalysis}
-              className="w-full bg-green-800 hover:bg-green-700 text-green-100 text-[10px] px-2 py-1 rounded transition-colors"
+              onClick={() => void runAnalysis()}
+              disabled={running}
+              className="w-full bg-green-800 hover:bg-green-700 disabled:opacity-50 text-green-100 text-[10px] px-2 py-1 rounded transition-colors"
             >
-              Ejecutar Analisis
+              {running ? "Ejecutando..." : "Ejecutar Analisis"}
             </button>
           </div>
         )}
@@ -127,31 +208,97 @@ export default function TerrainAnalysis() {
               }`}>
                 {ta.type}
               </span>
-              {ta.type === "LOS" && (
+              {ta.los && (
                 <span className={`text-[10px] flex items-center gap-0.5 ${
-                  ta.results.visible ? "text-green-400" : "text-red-400"
+                  ta.los.visible ? "text-green-400" : "text-red-400"
                 }`}>
-                  {ta.results.visible ? <Eye size={10} /> : <EyeOff size={10} />}
-                  {ta.results.visible ? "VISIBLE" : "NO VISIBLE"}
+                  {ta.los.visible ? <Eye size={10} /> : <EyeOff size={10} />}
+                  {ta.los.visible ? "VISIBLE" : "NO VISIBLE"}
                 </span>
               )}
+              {ta.route && (
+                <span className="text-[10px] text-yellow-400 font-bold">{ta.route.difficulty}</span>
+              )}
             </div>
-            <div className="grid grid-cols-2 gap-1 text-[10px]">
-              <div className="text-gray-500">Distancia:</div>
-              <div className="text-gray-300">{ta.results.distance} km</div>
-              <div className="text-gray-500">Elev. gain:</div>
-              <div className="text-gray-300">{ta.results.elevationGain} m</div>
-              <div className="text-gray-500">Tiempo est.:</div>
-              <div className="text-gray-300">{ta.results.estimatedTime} min</div>
-            </div>
-            {ta.results.obstacles.length > 0 && (
-              <div className="mt-1">
-                <div className="text-[10px] text-gray-500">Obstaculos:</div>
-                {ta.results.obstacles.map((o, i) => (
-                  <div key={i} className="text-[10px] text-yellow-400">- {o}</div>
-                ))}
+
+            {ta.los && (
+              <div className="grid grid-cols-2 gap-1 text-[10px]">
+                <div className="text-gray-500">Distancia:</div>
+                <div className="text-gray-300">{ta.los.distanceKm} km</div>
+                <div className="text-gray-500">Claro minimo:</div>
+                <div className="text-gray-300">{ta.los.minClearanceM} m</div>
+                {ta.los.obstructions.length > 0 && (
+                  <>
+                    <div className="text-gray-500">Obstrucciones:</div>
+                    <div className="text-yellow-400">
+                      {ta.los.obstructions.map((o, i) => (
+                        <div key={i}>- {o.distanceKm} km (bloqueo {o.blockageM} m)</div>
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
             )}
+
+            {ta.route && (
+              <div className="grid grid-cols-2 gap-1 text-[10px]">
+                <div className="text-gray-500">Distancia:</div>
+                <div className="text-gray-300">{ta.route.distanceKm} km</div>
+                <div className="text-gray-500">Tiempo est.:</div>
+                <div className="text-gray-300">{ta.route.estimatedTimeMin} min</div>
+                {ta.route.obstacles.length > 0 && (
+                  <>
+                    <div className="text-gray-500">Obstaculos:</div>
+                    <div className="text-yellow-400">
+                      {ta.route.obstacles.map((o, i) => <div key={i}>- {o}</div>)}
+                    </div>
+                  </>
+                )}
+                <div className="text-gray-500">Recomend.:</div>
+                <div className="text-gray-400">
+                  {ta.route.recommendations.map((r, i) => <div key={i}>- {r}</div>)}
+                </div>
+              </div>
+            )}
+
+            {ta.area && (
+              <div className="space-y-1 text-[10px]">
+                <div className="flex gap-2">
+                  {Object.entries(ta.area.trafficability).map(([vehicle, t]) => (
+                    <span key={vehicle} className="text-gray-400">
+                      {vehicle}: <span className="text-green-400">{t.accessible_pct}%</span>
+                    </span>
+                  ))}
+                </div>
+                {ta.area.keyTerrain.length > 0 && (
+                  <div>
+                    <div className="text-gray-500">Terreno clave:</div>
+                    {ta.area.keyTerrain.map((k, i) => (
+                      <div key={i} className="text-gray-400">
+                        - {k.description} ({k.elevation_m} m, valor {k.strategic_value})
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {ta.area.obstacles.length > 0 && (
+                  <div>
+                    <div className="text-gray-500">Obstaculos:</div>
+                    {ta.area.obstacles.map((o, i) => (
+                      <div key={i} className="text-yellow-400">- [{o.type}] {o.description} ({o.severity})</div>
+                    ))}
+                  </div>
+                )}
+                {ta.area.recommendations.length > 0 && (
+                  <div>
+                    <div className="text-gray-500">Recomendaciones:</div>
+                    {ta.area.recommendations.map((r, i) => (
+                      <div key={i} className="text-gray-400">- {r}</div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="flex gap-1 mt-1">
               <span className="text-[10px] text-gray-600">
                 {ta.startPoint[0].toFixed(3)}, {ta.startPoint[1].toFixed(3)}
@@ -170,10 +317,10 @@ export default function TerrainAnalysis() {
       </div>
 
       <div className="border-t border-gray-700 p-2 flex gap-1">
-        <button className="flex items-center gap-1 text-[10px] text-gray-500 hover:text-gray-300 px-2 py-1 rounded border border-gray-700 transition-colors">
-          <Download size={10} /> Exportar
-        </button>
-        <button className="flex items-center gap-1 text-[10px] text-gray-500 hover:text-gray-300 px-2 py-1 rounded border border-gray-700 transition-colors">
+        <button
+          onClick={clearTerrainAnalyses}
+          className="flex items-center gap-1 text-[10px] text-gray-500 hover:text-gray-300 px-2 py-1 rounded border border-gray-700 transition-colors"
+        >
           <Trash2 size={10} /> Limpiar
         </button>
       </div>

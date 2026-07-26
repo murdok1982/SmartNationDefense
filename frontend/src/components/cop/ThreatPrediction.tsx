@@ -1,39 +1,121 @@
 "use client";
-import { useState } from "react";
-import { Target, TrendingUp, MapPin, AlertTriangle, Eye, EyeOff, Clock } from "lucide-react";
+import { useState, FormEvent } from "react";
+import { Target, TrendingUp, MapPin, AlertTriangle, Clock, Play } from "lucide-react";
 import { useCOPStore } from "@/store/cop-store";
+import { apiFetch, apiErrorMessage } from "@/lib/api";
+import { mapPrediction, type BackendPrediction } from "@/lib/mappers";
 
 const threatLevelColor = (level: number) =>
-  level >= 8 ? "text-red-400" : level >= 6 ? "text-orange-400" : level >= 4 ? "text-yellow-400" : "text-blue-400";
+  level >= 80 ? "text-red-400" : level >= 60 ? "text-orange-400" : level >= 40 ? "text-yellow-400" : "text-blue-400";
 
 const threatBarColor = (level: number) =>
-  level >= 8 ? "bg-red-500" : level >= 6 ? "bg-orange-500" : level >= 4 ? "bg-yellow-500" : "bg-blue-500";
+  level >= 80 ? "bg-red-500" : level >= 60 ? "bg-orange-500" : level >= 40 ? "bg-yellow-500" : "bg-blue-500";
 
 const confidenceColor = (c: number) =>
   c > 0.8 ? "text-green-400" : c > 0.5 ? "text-yellow-400" : "text-red-400";
 
 export default function ThreatPrediction() {
-  const { threatPredictions } = useCOPStore();
-  const [showOverlay, setShowOverlay] = useState(true);
+  const { threatPredictions, addThreatPrediction } = useCOPStore();
   const [selectedThreat, setSelectedThreat] = useState<string | null>(null);
   const [timeHorizon, setTimeHorizon] = useState(6);
+  const [unitId, setUnitId] = useState("");
+  const [lat, setLat] = useState("");
+  const [lon, setLon] = useState("");
+  const [speed, setSpeed] = useState("0");
+  const [heading, setHeading] = useState("0");
+  const [threatLevelInput, setThreatLevelInput] = useState("50");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const filtered = threatPredictions.filter(t => t.timeHorizon <= timeHorizon);
+
+  const handlePredict = async (e: FormEvent) => {
+    e.preventDefault();
+    const latN = Number(lat);
+    const lonN = Number(lon);
+    if (!unitId.trim() || Number.isNaN(latN) || Number.isNaN(lonN)) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const result = await apiFetch<BackendPrediction>("/api/v1/prediction/predict-movement", {
+        method: "POST",
+        body: {
+          id: unitId.trim(),
+          lat: latN,
+          lon: lonN,
+          speed: Number(speed) || 0,
+          heading: Number(heading) || 0,
+          threat_level: Number(threatLevelInput) || 50,
+          time_horizon_min: timeHorizon * 60,
+        },
+      });
+      addThreatPrediction(mapPrediction(result));
+    } catch (err) {
+      setError(apiErrorMessage(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <div className="bg-gray-900 rounded border border-gray-700 flex flex-col h-full">
       <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-700">
         <Target size={14} className="text-red-400" />
         <span className="text-xs font-bold text-gray-400">PREDICCION DE AMENAZAS</span>
-        <button
-          onClick={() => setShowOverlay(!showOverlay)}
-          className={`ml-auto text-[10px] flex items-center gap-0.5 px-1.5 py-0.5 rounded border transition-colors ${
-            showOverlay ? "text-green-400 border-green-700 bg-green-900/20" : "text-gray-500 border-gray-700"
-          }`}
-        >
-          {showOverlay ? <Eye size={10} /> : <EyeOff size={10} />} Overlay
-        </button>
       </div>
+
+      <form onSubmit={handlePredict} className="p-2 border-b border-gray-700 space-y-1">
+        <div className="text-[10px] text-gray-500 font-bold">NUEVA PREDICCION (KALMAN)</div>
+        <div className="flex gap-1">
+          <input
+            value={unitId}
+            onChange={e => setUnitId(e.target.value)}
+            placeholder="ID unidad hostil"
+            className="flex-1 bg-gray-800 text-gray-300 text-[10px] rounded px-2 py-1 border border-gray-700"
+          />
+          <input
+            value={lat}
+            onChange={e => setLat(e.target.value)}
+            placeholder="Lat"
+            className="w-20 bg-gray-800 text-gray-300 text-[10px] rounded px-2 py-1 border border-gray-700"
+          />
+          <input
+            value={lon}
+            onChange={e => setLon(e.target.value)}
+            placeholder="Lon"
+            className="w-20 bg-gray-800 text-gray-300 text-[10px] rounded px-2 py-1 border border-gray-700"
+          />
+        </div>
+        <div className="flex gap-1 items-center">
+          <input
+            value={speed}
+            onChange={e => setSpeed(e.target.value)}
+            placeholder="Velocidad km/h"
+            className="flex-1 bg-gray-800 text-gray-300 text-[10px] rounded px-2 py-1 border border-gray-700"
+          />
+          <input
+            value={heading}
+            onChange={e => setHeading(e.target.value)}
+            placeholder="Rumbo deg"
+            className="flex-1 bg-gray-800 text-gray-300 text-[10px] rounded px-2 py-1 border border-gray-700"
+          />
+          <input
+            value={threatLevelInput}
+            onChange={e => setThreatLevelInput(e.target.value)}
+            placeholder="Amenaza 0-100"
+            className="flex-1 bg-gray-800 text-gray-300 text-[10px] rounded px-2 py-1 border border-gray-700"
+          />
+          <button
+            type="submit"
+            disabled={submitting}
+            className="bg-red-900/40 hover:bg-red-900/60 disabled:opacity-50 text-red-300 text-[10px] px-2 py-1 rounded border border-red-800 flex items-center gap-1 transition-colors"
+          >
+            <Play size={10} />
+            {submitting ? "..." : "Predecir"}
+          </button>
+        </div>
+        {error && <div className="text-[10px] font-mono text-red-400">{error}</div>}
+      </form>
 
       <div className="p-2 border-b border-gray-700">
         <div className="flex items-center gap-2">
@@ -60,7 +142,7 @@ export default function ThreatPrediction() {
       <div className="flex-1 overflow-y-auto p-2 space-y-2">
         {filtered.length === 0 && (
           <div className="text-xs font-mono text-gray-600 text-center py-4">
-            Sin predicciones en el horizonte seleccionado
+            Sin predicciones. Solicite una prediccion de movimiento.
           </div>
         )}
         {filtered.map(t => (
@@ -76,14 +158,14 @@ export default function ThreatPrediction() {
             <div className="flex items-center justify-between mb-1">
               <span className="text-red-400 font-bold">{t.unitName}</span>
               <span className={`text-[10px] font-bold ${threatLevelColor(t.threatLevel)}`}>
-                {t.threatLevel}/10
+                {Math.round(t.threatLevel)}/100
               </span>
             </div>
 
             <div className="w-full bg-gray-700 h-1 rounded mb-1">
               <div
                 className={`h-1 rounded ${threatBarColor(t.threatLevel)}`}
-                style={{ width: `${t.threatLevel * 10}%` }}
+                style={{ width: `${Math.min(100, t.threatLevel)}%` }}
               />
             </div>
 

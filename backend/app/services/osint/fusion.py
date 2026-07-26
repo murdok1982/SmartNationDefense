@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -13,7 +14,7 @@ from app.services.osint.imint import ImageAnalysisResult
 from app.services.osint.finint import FinancialProfile
 from app.services.osint.cybint import IndicatorOfCompromise, ThreatReport
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 @dataclass
 class IntelligenceFusionResult:

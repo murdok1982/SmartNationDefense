@@ -1,0 +1,84 @@
+{
+  "templates": [
+    {
+      "id": "frontal_assault",
+      "name": "Asalto Frontal",
+      "doctrine": "ROAD",
+      "description": "Ataque directo sobre el objetivo con máxima potencia de fuego en el eje principal",
+      "phases": [
+        {"name": "Preparación de fuegos", "duration_min": 30, "order": 1},
+        {"name": "Avance de eje principal", "duration_min": 60, "order": 2},
+        {"name": "Asalto y brecha", "duration_min": 45, "order": 3},
+        {"name": "Consolidación y limpieza", "duration_min": 30, "order": 4}
+      ],
+      "force_ratio_required": 3.0,
+      "risk_profile": "HIGH",
+      "suitable_terrain": ["PLAIN", "LOWLAND"],
+      "limitations": ["Altas bajas esperadas", "Requiere superioridad de fuego abrumadora"]
+    },
+    {
+      "id": "envelopment",
+      "name": "Envolvimiento",
+      "doctrine": "ROAD",
+      "description": "Ataque por flanco o retaguardia para evitar el poder defensivo principal",
+      "phases": [
+        {"name": "Demostración / finta", "duration_min": 45, "order": 1},
+        {"name": "Movimiento de envolvimiento", "duration_min": 90, "order": 2},
+        {"name": "Ataque por flanco", "duration_min": 45, "order": 3},
+        {"name": "Cierre de cerco", "duration_min": 30, "order": 4}
+      ],
+      "force_ratio_required": 1.5,
+      "risk_profile": "MEDIUM",
+      "suitable_terrain": ["PLAIN", "HILLS"],
+      "limitations": ["Requiere unidades de maniobra rápidas", "Dependiente de sorpresa"]
+    },
+    {
+      "id": "penetration",
+      "name": "Penetración",
+      "doctrine": "ROAD",
+      "description": "Creación de brecha en el frente enemigo para explotar profundidad",
+      "phases": [
+        {"name": "Fuegos de supresión", "duration_min": 30, "order": 1},
+        {"name": "Apertura de brecha", "duration_min": 60, "order": 2},
+        {"name": "Explotación", "duration_min": 90, "order": 3},
+        {"name": "Aseguramiento de flancos", "duration_min": 45, "order": 4}
+      ],
+      "force_ratio_required": 2.0,
+      "risk_profile": "HIGH",
+      "suitable_terrain": ["LOWLAND", "PLAIN"],
+      "limitations": ["Expone flancos durante la explotación", "Requiere reservas móviles"]
+    },
+    {
+      "id": "indirect_fires",
+      "name": "Fuegos Indirectos",
+      "doctrine": "ROAD",
+      "description": "Neutralización del objetivo mediante fuegos de artillería, morteros y CAS sin asalto terrestre",
+      "phases": [
+        {"name": "Adquisición de blancos", "duration_min": 20, "order": 1},
+        {"name": "Batería de preparación", "duration_min": 15, "order": 2},
+        {"name": "Fuego sostenido", "duration_min": 45, "order": 3},
+        {"name": "BDA y re-ataque", "duration_min": 30, "order": 4}
+      ],
+      "force_ratio_required": 1.0,
+      "risk_profile": "LOW",
+      "suitable_terrain": ["PLAIN", "LOWLAND", "HILLS", "MOUNTAIN"],
+      "limitations": ["Dependiente de munición guiada", "Limitado contra objetivos fortificados"]
+    },
+    {
+      "id": "air_assault",
+      "name": "Asalto Aéreo",
+      "doctrine": "ROAD",
+      "description": "Proyección de fuerzas por vía aérea directamente sobre el objetivo o zonas clave",
+      "phases": [
+        {"name": "Supresión de defensas aéreas", "duration_min": 20, "order": 1},
+        {"name": "Helicarga / inserción", "duration_min": 30, "order": 2},
+        {"name": "Ataque terrestre", "duration_min": 45, "order": 3},
+        {"name": "Extracción", "duration_min": 30, "order": 4}
+      ],
+      "force_ratio_required": 1.2,
+      "risk_profile": "CRITICAL",
+      "suitable_terrain": ["PLAIN", "HILLS"],
+      "limitations": ["Ventana meteorológica crítica", "Alta vulnerabilidad en inserción", "Requiere superioridad aérea"]
+    }
+  ]
+}

@@ -3,8 +3,17 @@ class AppConstants {
 
   static const String appName = 'SESIS-COP';
   static const String version = '1.0.0';
-  static const String apiBaseUrl = 'https://api.sesis-federation.io/v1';
-  static const String wsUrl = 'wss://api.sesis-federation.io/ws';
+  static const String apiBaseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'http://10.0.2.2:8000',
+  );
+  static const String wsUrl = String.fromEnvironment(
+    'WS_URL',
+    defaultValue: 'ws://10.0.2.2:8000/ws',
+  );
+  static const String meshPsk = String.fromEnvironment('MESH_PSK', defaultValue: '');
+  static const String tlsPins = String.fromEnvironment('TLS_PINS', defaultValue: '');
+  static const int meshTimestampToleranceSeconds = 60;
   static const int connectionTimeout = 15;
   static const int syncIntervalSeconds = 30;
   static const int locationUpdateIntervalMs = 5000;

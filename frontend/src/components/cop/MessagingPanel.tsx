@@ -1,8 +1,11 @@
 "use client";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { MessageSquare, Send, Radio, AlertTriangle, ChevronRight, Check, Reply } from "lucide-react";
 import { useCOPStore } from "@/store/cop-store";
-import type { TacticalMessage } from "@/lib/cop-types";
+import { useApiData } from "@/lib/use-api-data";
+import { apiFetch, apiErrorMessage } from "@/lib/api";
+import { mapMessage, type BackendMessage } from "@/lib/mappers";
+import type { TacticalMessage, Conversation } from "@/lib/cop-types";
 
 const priorityConfig: Record<string, { color: string; bg: string; border: string }> = {
   CRITICAL: { color: "text-red-400", bg: "bg-red-900/20", border: "border-l-red-500" },
@@ -19,24 +22,58 @@ const typeIcons: Record<string, string> = {
   LOCATION: "LOC",
 };
 
+const OPERATOR_ID = "OPERATOR";
+
 export default function MessagingPanel() {
-  const { messages, conversations, addMessage, acknowledgeMessage } = useCOPStore();
+  const { messages, setMessages, acknowledgeMessage, state } = useCOPStore();
   const [selectedConv, setSelectedConv] = useState<string | null>(null);
   const [newContent, setNewContent] = useState("");
   const [newSubject, setNewSubject] = useState("");
+  const [newRecipients, setNewRecipients] = useState("");
   const [msgType, setMsgType] = useState<TacticalMessage["type"]>("TEXT");
   const [msgPriority, setMsgPriority] = useState<TacticalMessage["priority"]>("MEDIUM");
   const [msgClassification, setMsgClassification] = useState("RESTRICTED");
   const [isBroadcast, setIsBroadcast] = useState(false);
   const [replyTo, setReplyTo] = useState<string | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
   const chatRef = useRef<HTMLDivElement>(null);
 
+  const { loading, error, reload } = useApiData(
+    async () => {
+      const data = await apiFetch<BackendMessage[]>(`/api/v1/messaging/history?user_id=${OPERATOR_ID}&limit=100`);
+      setMessages(data.map(mapMessage));
+      return data.length;
+    },
+    { pollMs: 15000 },
+  );
+
+  const conversations = useMemo<Conversation[]>(() => {
+    const byThread = new Map<string, TacticalMessage[]>();
+    for (const m of messages) {
+      const key = m.threadId ?? m.id;
+      const list = byThread.get(key) ?? [];
+      list.push(m);
+      byThread.set(key, list);
+    }
+    const convs: Conversation[] = [];
+    for (const [threadId, msgs] of byThread) {
+      const sorted = [...msgs].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+      const latest = sorted[0];
+      const participants = Array.from(new Set(msgs.flatMap(m => [m.sender, ...m.recipients])));
+      convs.push({
+        id: threadId,
+        participants,
+        lastMessage: latest.content,
+        lastTimestamp: latest.timestamp,
+        unreadCount: msgs.filter(m => !m.acknowledged).length,
+      });
+    }
+    return convs.sort((a, b) => b.lastTimestamp.localeCompare(a.lastTimestamp));
+  }, [messages]);
+
   const filteredMessages = selectedConv
-    ? messages.filter(m => {
-        const conv = conversations.find(c => c.id === selectedConv);
-        if (!conv) return false;
-        return conv.participants.includes(m.sender) || conv.participants.some(p => m.recipients.includes(p));
-      })
+    ? messages.filter(m => (m.threadId ?? m.id) === selectedConv)
     : messages;
 
   useEffect(() => {
@@ -45,29 +82,48 @@ export default function MessagingPanel() {
     }
   }, [filteredMessages.length]);
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!newContent.trim()) return;
-    const msg: TacticalMessage = {
-      id: `m${Date.now()}`,
-      sender: "HQ",
-      recipients: isBroadcast
-        ? ["Alfa-1", "Bravo-2", "Charlie-3", "Delta-4", "Echo-5"]
-        : selectedConv
-          ? conversations.find(c => c.id === selectedConv)?.participants.filter(p => p !== "HQ") || []
-          : [],
-      type: msgType,
-      priority: msgPriority,
-      subject: newSubject,
-      content: newContent,
-      timestamp: new Date().toISOString(),
-      acknowledged: false,
-      classification: msgClassification,
-      replyTo: replyTo || undefined,
-    };
-    addMessage(msg);
-    setNewContent("");
-    setNewSubject("");
-    setReplyTo(null);
+    const recipients = isBroadcast
+      ? state.units.map(u => u.name)
+      : newRecipients.split(",").map(r => r.trim()).filter(Boolean);
+    if (recipients.length === 0) {
+      setSendError(isBroadcast ? "No hay unidades registradas para broadcast" : "Indique destinatarios");
+      return;
+    }
+    setSending(true);
+    setSendError(null);
+    try {
+      await apiFetch<BackendMessage>("/api/v1/messaging/send", {
+        method: "POST",
+        body: {
+          recipient_ids: recipients,
+          message_type: msgType,
+          priority: msgPriority,
+          content: newContent,
+          subject: newSubject || undefined,
+          classification: msgClassification,
+          parent_id: replyTo ?? undefined,
+        },
+      });
+      setNewContent("");
+      setNewSubject("");
+      setReplyTo(null);
+      await reload();
+    } catch (e) {
+      setSendError(apiErrorMessage(e));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleAck = async (id: string) => {
+    try {
+      await apiFetch(`/api/v1/messaging/${id}/ack?user_id=${OPERATOR_ID}`, { method: "PUT" });
+      acknowledgeMessage(id);
+    } catch (e) {
+      setSendError(apiErrorMessage(e));
+    }
   };
 
   return (
@@ -81,6 +137,15 @@ export default function MessagingPanel() {
       <div className="flex flex-1 min-h-0">
         <div className="w-1/3 border-r border-gray-700 overflow-y-auto">
           <div className="p-2 space-y-1">
+            {loading && conversations.length === 0 && (
+              <div className="text-[10px] font-mono text-gray-500 animate-pulse p-2">Cargando mensajes...</div>
+            )}
+            {error && (
+              <div className="text-[10px] font-mono text-red-400 p-2">{error}</div>
+            )}
+            {!loading && !error && conversations.length === 0 && (
+              <div className="text-[10px] font-mono text-gray-600 p-2">Sin conversaciones</div>
+            )}
             {conversations.map(c => (
               <button
                 key={c.id}
@@ -99,7 +164,7 @@ export default function MessagingPanel() {
                 </div>
                 <div className="text-gray-500 truncate mt-0.5">{c.lastMessage}</div>
                 <div className="text-gray-600 text-[10px] mt-0.5">
-                  {new Date(c.lastTimestamp).toISOString().slice(11, 16)}Z
+                  {c.lastTimestamp ? new Date(c.lastTimestamp).toISOString().slice(11, 16) : "--"}Z
                 </div>
               </button>
             ))}
@@ -108,6 +173,9 @@ export default function MessagingPanel() {
 
         <div className="flex-1 flex flex-col min-w-0">
           <div ref={chatRef} className="flex-1 overflow-y-auto p-2 space-y-1">
+            {filteredMessages.length === 0 && !loading && (
+              <div className="text-[10px] font-mono text-gray-600 text-center py-4">Sin mensajes</div>
+            )}
             {filteredMessages.map(m => {
               const cfg = priorityConfig[m.priority] || priorityConfig.LOW;
               return (
@@ -126,7 +194,7 @@ export default function MessagingPanel() {
                     </span>
                     <span className="text-gray-300 font-bold">{m.subject}</span>
                     <span className="text-gray-600 text-[10px] ml-auto">
-                      {new Date(m.timestamp).toISOString().slice(11, 16)}Z
+                      {m.timestamp ? new Date(m.timestamp).toISOString().slice(11, 16) : "--"}Z
                     </span>
                   </div>
                   <div className="text-gray-300">{m.content}</div>
@@ -144,7 +212,7 @@ export default function MessagingPanel() {
                       </span>
                     ) : (
                       <button
-                        onClick={() => acknowledgeMessage(m.id)}
+                        onClick={() => void handleAck(m.id)}
                         className="text-[10px] text-yellow-400 hover:text-yellow-300 flex items-center gap-0.5"
                       >
                         <AlertTriangle size={10} /> ACK
@@ -170,6 +238,7 @@ export default function MessagingPanel() {
                 <button onClick={() => setReplyTo(null)} className="text-red-400 ml-auto">x</button>
               </div>
             )}
+            {sendError && <div className="text-[10px] font-mono text-red-400">{sendError}</div>}
             <div className="flex gap-1">
               <select
                 value={msgType}
@@ -214,6 +283,14 @@ export default function MessagingPanel() {
                 <Radio size={10} /> BROADCAST
               </button>
             </div>
+            {!isBroadcast && (
+              <input
+                value={newRecipients}
+                onChange={e => setNewRecipients(e.target.value)}
+                placeholder="Destinatarios (separados por coma)..."
+                className="w-full bg-gray-800 text-gray-300 text-xs rounded px-2 py-1 border border-gray-700"
+              />
+            )}
             <input
               value={newSubject}
               onChange={e => setNewSubject(e.target.value)}
@@ -224,13 +301,14 @@ export default function MessagingPanel() {
               <input
                 value={newContent}
                 onChange={e => setNewContent(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && handleSend()}
+                onKeyDown={e => e.key === "Enter" && void handleSend()}
                 placeholder="Mensaje tactico..."
                 className="flex-1 bg-gray-800 text-gray-300 text-xs rounded px-2 py-1 border border-gray-700"
               />
               <button
-                onClick={handleSend}
-                className="bg-green-800 hover:bg-green-700 text-green-100 text-xs px-3 py-1 rounded flex items-center gap-1 transition-colors"
+                onClick={() => void handleSend()}
+                disabled={sending}
+                className="bg-green-800 hover:bg-green-700 disabled:opacity-50 text-green-100 text-xs px-3 py-1 rounded flex items-center gap-1 transition-colors"
               >
                 <Send size={12} />
               </button>

@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
+import 'package:crypto/crypto.dart';
 
 enum MeshMessageType {
   intelUpdate,
@@ -20,6 +20,57 @@ extension MeshMessageTypeExtension on MeshMessageType {
       (e) => e.name.toLowerCase() == s.toLowerCase(),
       orElse: () => MeshMessageType.intelUpdate,
     );
+  }
+}
+
+String _canonicalize(dynamic value) {
+  if (value is Map) {
+    final keys = value.keys.map((k) => k.toString()).toList()..sort();
+    final entries = keys.map((k) => '${jsonEncode(k)}:${_canonicalize(value[k])}').join(',');
+    return '{$entries}';
+  }
+  if (value is List) {
+    return '[${value.map(_canonicalize).join(',')}]';
+  }
+  return jsonEncode(value);
+}
+
+class MeshSigner {
+  MeshSigner(String psk) : _key = utf8.encode(psk);
+
+  final List<int> _key;
+
+  String _digest(String data) => Hmac(sha256, _key).convert(utf8.encode(data)).toString();
+
+  Map<String, dynamic> _signableJson(MeshMessage message) {
+    final json = message.toJson()..remove('signature');
+    return json;
+  }
+
+  String sign(MeshMessage message) => _digest(_canonicalize(_signableJson(message)));
+
+  bool verify(MeshMessage message) {
+    if (message.signature.isEmpty) return false;
+    final expected = sign(message);
+    return _constantTimeEquals(expected, message.signature);
+  }
+
+  String signHandshake(String endpointId, int timestamp) => _digest('handshake:$endpointId:$timestamp');
+
+  bool verifyHandshake(String endpointId, int timestamp, String hmac) {
+    final expected = signHandshake(endpointId, timestamp);
+    return hmac.isNotEmpty && _constantTimeEquals(expected, hmac);
+  }
+
+  bool _constantTimeEquals(String a, String b) {
+    final ba = utf8.encode(a);
+    final bb = utf8.encode(b);
+    if (ba.length != bb.length) return false;
+    var diff = 0;
+    for (var i = 0; i < ba.length; i++) {
+      diff |= ba[i] ^ bb[i];
+    }
+    return diff == 0;
   }
 }
 

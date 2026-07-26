@@ -5,9 +5,10 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
+import logging
 from app.core.config import settings, get_settings
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 class ThreatLevel(str, Enum):
     LOW = "low"

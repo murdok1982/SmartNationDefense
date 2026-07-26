@@ -145,6 +145,7 @@ class ThreatPredictionService:
             "recommended_action": recommended,
             "trajectory_points": trajectory,
             "anomaly_score": round(anomaly_score, 3),
+            "method": "kalman_extrapolation",
             "generated_at": datetime.now(timezone.utc).isoformat(),
         }
         return prediction
@@ -165,6 +166,7 @@ class ThreatPredictionService:
                         "anomaly_score": round(score, 3),
                         "anomaly_type": self._classify_anomaly(unit_id, lat, lon),
                         "description": f"Comportamiento anomalo detectado en unidad {unit_id}",
+                        "method": "historical_deviation",
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                     })
         return anomalies
@@ -240,6 +242,61 @@ class ThreatPredictionService:
                     })
         warnings.sort(key=lambda w: w["distance_km"])
         return warnings
+
+    async def statistical_threat_trend(
+        self,
+        db,
+        window_hours: int = 24,
+        buckets: int = 6,
+    ) -> Dict[str, Any]:
+        from sqlalchemy import select
+        from app.db.models.persistence import EventStore
+
+        now = datetime.now(timezone.utc)
+        since = now - timedelta(hours=window_hours)
+        rows = (
+            await db.execute(
+                select(EventStore.occurred_at).where(EventStore.occurred_at >= since)
+            )
+        ).scalars().all()
+
+        bucket_seconds = (window_hours * 3600) / buckets
+        counts = [0] * buckets
+        for occurred_at in rows:
+            ts = occurred_at
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            age_s = (now - ts).total_seconds()
+            idx = int(age_s // bucket_seconds)
+            idx = min(max(buckets - 1 - idx, 0), buckets - 1)
+            counts[idx] += 1
+
+        half = max(1, buckets // 2)
+        first_rate = sum(counts[:half]) / half
+        second_rate = sum(counts[half:]) / (buckets - half) if buckets - half else 0.0
+        if second_rate > first_rate * 1.1:
+            trend = "INCREASING"
+        elif second_rate < first_rate * 0.9:
+            trend = "DECREASING"
+        else:
+            trend = "STABLE"
+
+        return {
+            "method": "statistical_trend",
+            "window_hours": window_hours,
+            "buckets": [
+                {
+                    "start": (since + timedelta(seconds=i * bucket_seconds)).isoformat(),
+                    "event_count": counts[i],
+                }
+                for i in range(buckets)
+            ],
+            "total_events": sum(counts),
+            "events_per_hour_first_half": round(first_rate * buckets / window_hours, 3),
+            "events_per_hour_second_half": round(second_rate * buckets / window_hours, 3),
+            "trend": trend,
+            "generated_at": now.isoformat(),
+        }
 
     def _detect_pattern(self, unit_id: str) -> str:
         history = self._history.get(unit_id, [])

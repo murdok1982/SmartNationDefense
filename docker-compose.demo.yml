@@ -1,0 +1,45 @@
+# Demo override — construye todo, modo producción, sin --reload, seed automático
+services:
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      PRODUCTION: "true"
+      ENVIRONMENT: "production"
+    volumes:
+      - ${FERNET_KEY_PATH:-./fernet.key}:/app/fernet.key:ro
+
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      PRODUCTION: "true"
+      ENVIRONMENT: "production"
+    volumes:
+      - ${FERNET_KEY_PATH:-./fernet.key}:/app/fernet.key:ro
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://localhost/api/v1}
+
+  seed:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      PRODUCTION: "true"
+      ENVIRONMENT: "production"
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://sesis:change-me-in-production@postgres:5432/sesis}
+      ADMIN_INITIAL_PASSWORD: ${ADMIN_INITIAL_PASSWORD:-admin123}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: python -m scripts.seed_data
+    profiles:
+      - seed-only

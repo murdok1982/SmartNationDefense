@@ -2,8 +2,14 @@
 Isolation Forest Anomaly Detector — Mejor que Z-score para patrones complejos.
 Detección no supervisada de anomalías en telemetría militar.
 """
-import numpy as np
-from sklearn.ensemble import IsolationForest
+try:
+    import numpy as np
+    from sklearn.ensemble import IsolationForest
+    _ML_IMPORT_ERROR: Optional[ImportError] = None
+except ImportError as exc:
+    np = None
+    IsolationForest = None
+    _ML_IMPORT_ERROR = exc
 from typing import List, Dict, Any, Optional
 import logging
 
@@ -19,6 +25,11 @@ class IsolationForestDetector:
             contamination: Proporción esperada de anomalías (0.1 = 10%)
             random_state: Semilla para reproducibilidad
         """
+        if _ML_IMPORT_ERROR is not None:
+            raise ImportError(
+                "IsolationForestDetector requiere numpy y scikit-learn instalados; "
+                "no se simula deteccion sin ellos"
+            ) from _ML_IMPORT_ERROR
         self.contamination = contamination
         self.random_state = random_state
         self.models = {}  # Un modelo por tipo de telemetría

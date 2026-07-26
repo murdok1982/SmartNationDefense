@@ -1,6 +1,9 @@
 "use client";
 import { useEffect, useRef } from "react";
 import { useCOPStore } from "@/store/cop-store";
+import { useApiData } from "@/lib/use-api-data";
+import { apiFetch } from "@/lib/api";
+import { mapAlert, type BackendAlert } from "@/lib/mappers";
 
 const sevConfig: Record<string, { color: string; bg: string }> = {
   critical: { color: "text-red-400", bg: "bg-red-900/20" },
@@ -10,8 +13,17 @@ const sevConfig: Record<string, { color: string; bg: string }> = {
 };
 
 export default function AlertTicker() {
-  const { state } = useCOPStore();
+  const { state, setAlerts } = useCOPStore();
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const { loading, error } = useApiData(
+    async () => {
+      const data = await apiFetch<BackendAlert[]>("/api/v1/c2/?limit=50");
+      setAlerts(data.map(mapAlert));
+      return data.length;
+    },
+    { pollMs: 30000 },
+  );
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -34,7 +46,13 @@ export default function AlertTicker() {
         <span className="text-gray-600 ml-auto">{state.alerts.length}</span>
       </div>
       <div ref={scrollRef} className="space-y-0.5 max-h-40 overflow-y-auto">
-        {state.alerts.length === 0 && (
+        {loading && state.alerts.length === 0 && (
+          <div className="text-xs font-mono text-gray-500 animate-pulse">Cargando alertas...</div>
+        )}
+        {error && (
+          <div className="text-xs font-mono text-red-400">{error}</div>
+        )}
+        {!loading && !error && state.alerts.length === 0 && (
           <div className="text-xs font-mono text-gray-600">Sin alertas activas</div>
         )}
         {state.alerts.map((a) => {
@@ -45,9 +63,11 @@ export default function AlertTicker() {
                 {a.severity.toUpperCase()}
               </span>
               <span className="text-gray-300 flex-1">{a.message}</span>
-              <span className="text-gray-600 shrink-0">
-                {new Date(a.timestamp).toISOString().slice(11, 16)}Z
-              </span>
+              {a.timestamp && (
+                <span className="text-gray-600 shrink-0">
+                  {new Date(a.timestamp).toISOString().slice(11, 16)}Z
+                </span>
+              )}
             </div>
           );
         })}

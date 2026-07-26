@@ -4,7 +4,8 @@ Protege contra DDoS y abuso de API en sistemas militares.
 """
 import time
 import hashlib
-from fastapi import Request, HTTPException, status
+from fastapi import Request, status
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from typing import Dict, Any, Callable
 import logging
@@ -65,6 +66,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
     DEFAULT_LIMITS = {
         "default": (100, 60),
+        "login": (5, 60),
         "brain": (20, 60),
         "ingest": (500, 60),
         "classified": (50, 60),
@@ -84,7 +86,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         path = request.url.path
         limit_key = "default"
-        if "/brain/" in path:
+        if path.rstrip("/").endswith("/auth/login"):
+            limit_key = "login"
+        elif "/brain/" in path:
             limit_key = "brain"
         elif "/ingest" in path:
             limit_key = "ingest"
@@ -98,14 +102,18 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             max_req = self.DEFAULT_LIMITS["classified"][0]
 
         key = f"{limit_key}:{':'.join(key_parts)}"
-        allowed, info = await self.limiter.is_allowed(key, max_req, window)
+        try:
+            allowed, info = await self.limiter.is_allowed(key, max_req, window)
+        except Exception as e:
+            logger.error(f"Rate limiter no disponible ({e}); peticion permitida")
+            return await call_next(request)
 
         if not allowed:
             logger.warning(f"Rate limit excedido: {client_ip} en {path}")
-            raise HTTPException(
+            return JSONResponse(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail=f"Rate limit excedido. Reintente en {info['retry_after']}s",
-                headers={"Retry-After": str(info["retry_after"])}
+                content={"detail": f"Rate limit excedido. Reintente en {info['retry_after']}s"},
+                headers={"Retry-After": str(info["retry_after"])},
             )
 
         response = await call_next(request)

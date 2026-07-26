@@ -6,10 +6,12 @@ from enum import Enum
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from typing import Optional, List
-from datetime import datetime
+from typing import Optional, List, Dict, Any
+from datetime import datetime, timedelta, timezone
+import time
 import uuid
 
+import httpx
 from pydantic import BaseModel, Field
 
 from app.db.session import async_session_factory
@@ -23,6 +25,100 @@ router = APIRouter()
 async def get_db():
     async with async_session_factory() as session:
         yield session
+
+
+_tle_cache: Dict[str, Any] = {"fetched_at": 0.0, "tles": []}
+
+
+def _parse_tle_epoch(line1: str) -> str:
+    year = int(line1[18:20])
+    day = float(line1[20:32])
+    full_year = 2000 + year if year < 57 else 1900 + year
+    dt = datetime(full_year, 1, 1, tzinfo=timezone.utc) + timedelta(days=day - 1)
+    return dt.isoformat()
+
+
+def _orbit_type(mean_motion: float, eccentricity: float) -> str:
+    if eccentricity > 0.25:
+        return "HEO"
+    if mean_motion >= 11.25:
+        return "LEO"
+    if 0.9 <= mean_motion <= 1.1:
+        return "GEO"
+    return "MEO"
+
+
+def _parse_tle_block(name: str, line1: str, line2: str) -> Dict[str, Any]:
+    eccentricity = float("0." + line2[26:33].strip())
+    mean_motion = float(line2[52:63])
+    return {
+        "name": name.strip(),
+        "norad_id": line1[2:7].strip(),
+        "intl_designator": line1[9:17].strip(),
+        "epoch": _parse_tle_epoch(line1),
+        "orbit_type": _orbit_type(mean_motion, eccentricity),
+        "inclination_deg": float(line2[8:16]),
+        "raan_deg": float(line2[17:25]),
+        "eccentricity": eccentricity,
+        "arg_perigee_deg": float(line2[34:42]),
+        "mean_anomaly_deg": float(line2[43:51]),
+        "mean_motion_rev_day": mean_motion,
+        "tle_line1": line1,
+        "tle_line2": line2,
+    }
+
+
+async def _fetch_tles() -> List[Dict[str, Any]]:
+    now = time.monotonic()
+    if _tle_cache["tles"] and (now - _tle_cache["fetched_at"]) < settings.CELESTRAK_CACHE_TTL:
+        return _tle_cache["tles"]
+
+    try:
+        async with httpx.AsyncClient(timeout=settings.CELESTRAK_TIMEOUT) as client:
+            response = await client.get(settings.CELESTRAK_TLE_URL, follow_redirects=True)
+    except httpx.TimeoutException as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Timeout contactando CelesTrak ({settings.CELESTRAK_TIMEOUT}s)",
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Error de red con CelesTrak: {exc}",
+        ) from exc
+
+    if response.status_code != 200:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"CelesTrak respondio HTTP {response.status_code}",
+        )
+
+    lines = [ln.rstrip() for ln in response.text.splitlines() if ln.strip()]
+    tles: List[Dict[str, Any]] = []
+    i = 0
+    try:
+        while i + 2 < len(lines):
+            name, line1, line2 = lines[i], lines[i + 1], lines[i + 2]
+            if not (line1.startswith("1 ") and line2.startswith("2 ")):
+                i += 1
+                continue
+            tles.append(_parse_tle_block(name, line1, line2))
+            i += 3
+    except (ValueError, IndexError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Catalogo TLE no parseable: {exc}",
+        ) from exc
+
+    if not tles:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="CelesTrak no devolvio TLEs validos",
+        )
+
+    _tle_cache["tles"] = tles
+    _tle_cache["fetched_at"] = now
+    return tles
 
 
 class AnomalyType(str, Enum):
@@ -57,40 +153,20 @@ async def get_satellite_tracking(
     db: AsyncSession = Depends(get_db),
     principal: dict = Depends(require_clearance("SECRET")),
 ):
-    """Obtiene tracking de satélites propios y extranjeros."""
-    # TODO: Integrar con Space-Track.org o sistema nacional
+    """Obtiene el catalogo TLE real desde CelesTrak (grupo configurable).
+
+    Devuelve TLE crudo + epoca y elementos orbitales parseados. La propagacion
+    de posicion requiere la libreria sgp4 (no instalada); mientras tanto se
+    entregan los elementos orbitales para propagacion en cliente.
+    """
+    tles = await _fetch_tles()
     return {
-        "our_satellites": [
-            {
-                "id": "SAT-001",
-                "name": "SENTINEL-1A",
-                "norad_id": "12345",
-                "orbit_type": "LEO",
-                "status": "OPERATIONAL",
-                "position": {"lat": 41.0, "lon": 4.0, "alt": 650.0},
-                "velocity_kms": 7.8
-            },
-            {
-                "id": "SAT-002",
-                "name": "QUANTUM-COMM-3",
-                "norad_id": "23456",
-                "orbit_type": "GEO",
-                "status": "OPERATIONAL",
-                "position": {"lat": 0.0, "lon": 4.0, "alt": 35786.0},
-                "velocity_kms": 3.07
-            }
-        ],
-        "foreign_tracking": [
-            {
-                "norad_id": "34567",
-                "country": "UNKNOWN",
-                "orbit_type": "LEO",
-                "status": "MONITORING",
-                "threat_assessment": "LOW"
-            }
-        ],
-        "total_tracked": 3,
-        "classification": classification
+        "satellites": tles,
+        "total_tracked": len(tles),
+        "source": "celestrak",
+        "catalog_url": settings.CELESTRAK_TLE_URL,
+        "propagation": "tle_only_sgp4_not_installed",
+        "classification": classification,
     }
 
 
@@ -131,24 +207,10 @@ async def get_ssa_status(
     principal: dict = Depends(require_clearance("SECRET")),
 ):
     """Estado de Space Situational Awareness (SSA)."""
-    return {
-        "space_weather": {
-            "solar_activity": "MODERATE",
-            "geomagnetic_storm": "KP_3",
-            "radiation_belt": "NOMINAL"
-        },
-        "debris_tracking": {
-            "total_objects": 28500,
-            "close_approaches_24h": 12,
-            "critical_approaches": 1
-        },
-        "threat_assessment": {
-            "asat_capability": "SEVERAL_NATIONS",
-            "recent_tests": 0,
-            "defensive_posture": "ACTIVE"
-        },
-        "classification": classification
-    }
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail="SSA no configurado: no hay fuente de clima espacial ni catalogo de debris integrada",
+    )
 
 
 @router.post("/asat-response", tags=["Space / ASAT"])
@@ -178,6 +240,5 @@ async def initiate_asat_response(
         "response_id": response_id,
         "status": "awaiting_authorization",
         "response_type": payload.response_type.value,
-        "estimated_time": "5-15 minutes",
         "classification": payload.classification
     }

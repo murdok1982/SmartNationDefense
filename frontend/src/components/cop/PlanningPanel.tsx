@@ -1,19 +1,47 @@
 "use client";
 import { useState } from "react";
-import { FileText, Target, Shield, GitBranch, Plus, Check, ChevronDown, ChevronRight } from "lucide-react";
+import { FileText, Target, Shield, GitBranch, Plus, FolderOpen, BarChart3 } from "lucide-react";
 import { useCOPStore } from "@/store/cop-store";
-import type { OPORD, COA } from "@/lib/cop-types";
+import { apiFetch, apiErrorMessage } from "@/lib/api";
+import { mapOPORD, type BackendOPORD } from "@/lib/mappers";
+import type { OPORD, COA, COAComparison, OPORDRiskAssessment, OPORDSyncMatrix } from "@/lib/cop-types";
 
 type PlanningTab = "opord" | "coa" | "risk" | "sync";
 
+const PARAGRAPH_LABELS: Record<string, string> = {
+  paragraph_1_situation: "1. SITUACION",
+  paragraph_2_mission: "2. MISION",
+  paragraph_3_execution: "3. EJECUCION",
+  paragraph_4_sustainment: "4. SOSTENIMIENTO",
+  paragraph_5_command_signal: "5. MANDO Y SENALES",
+};
+
+const COA_CRITERIA = ["suitability", "feasibility", "acceptability", "distinguishability", "completeness"] as const;
+
+function paragraphText(p: Record<string, unknown>): string {
+  if (typeof p.summary === "string") return p.summary;
+  return Object.keys(p).length > 0 ? JSON.stringify(p, null, 1) : "";
+}
+
 export default function PlanningPanel() {
-  const { opords, coas, risks, addOPORD, updateOPORD, addCOA, addRisk } = useCOPStore();
+  const { opords, coas, addOPORD, updateOPORD, addCOA } = useCOPStore();
   const [tab, setTab] = useState<PlanningTab>("opord");
   const [editingOPORD, setEditingOPORD] = useState<OPORD | null>(null);
-  const [newCOA, setNewCOA] = useState({ name: "", description: "", successProbability: 0.5, risk: 5, resources: "", duration: "" });
-  const [newRisk, setNewRisk] = useState<{ hazard: string; probability: 1 | 2 | 3 | 4 | 5; impact: 1 | 2 | 3 | 4 | 5; mitigation: string }>({
-    hazard: "", probability: 3, impact: 3, mitigation: "",
-  });
+  const [paragraphDrafts, setParagraphDrafts] = useState<Record<string, string>>({});
+  const [newOpName, setNewOpName] = useState("");
+  const [newOpClass, setNewOpClass] = useState("SECRET");
+  const [loadId, setLoadId] = useState("");
+  const [newCOA, setNewCOA] = useState({ name: "", description: "", resources: "", duration: "" });
+  const [newCOAScores, setNewCOAScores] = useState<Record<string, number>>(
+    Object.fromEntries(COA_CRITERIA.map(c => [c, 5])),
+  );
+  const [comparison, setComparison] = useState<COAComparison | null>(null);
+  const [riskOpordId, setRiskOpordId] = useState("");
+  const [riskAssessment, setRiskAssessment] = useState<OPORDRiskAssessment | null>(null);
+  const [syncOpordId, setSyncOpordId] = useState("");
+  const [syncMatrix, setSyncMatrix] = useState<OPORDSyncMatrix | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const tabs = [
     { id: "opord" as const, label: "OPORD", icon: FileText },
@@ -22,48 +50,133 @@ export default function PlanningPanel() {
     { id: "sync" as const, label: "Sincronizacion", icon: GitBranch },
   ];
 
-  const startNewOPORD = () => {
-    setEditingOPORD({
-      id: `op${Date.now()}`,
-      operationName: "",
-      paragraph1_situation: "",
-      paragraph2_mission: "",
-      paragraph3_execution: "",
-      paragraph4_sustainment: "",
-      paragraph5_commandSignal: "",
-      status: "DRAFT",
-      createdAt: new Date().toISOString(),
-    });
+  const createOPORD = async () => {
+    if (!newOpName.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await apiFetch<BackendOPORD>("/api/v1/planning/create", {
+        method: "POST",
+        body: { operation_name: newOpName.trim(), classification: newOpClass, created_by: "OPERATOR" },
+      });
+      addOPORD(mapOPORD(result));
+      setNewOpName("");
+    } catch (e) {
+      setError(apiErrorMessage(e));
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const saveOPORD = () => {
-    if (!editingOPORD) return;
-    const existing = opords.find(o => o.id === editingOPORD.id);
-    if (existing) {
-      updateOPORD(editingOPORD.id, editingOPORD);
-    } else {
-      addOPORD(editingOPORD);
+  const loadOPORD = async (id: string) => {
+    if (!id.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await apiFetch<BackendOPORD>(`/api/v1/planning/${encodeURIComponent(id.trim())}`);
+      addOPORD(mapOPORD(result));
+      setLoadId("");
+    } catch (e) {
+      setError(apiErrorMessage(e));
+    } finally {
+      setBusy(false);
     }
-    setEditingOPORD(null);
+  };
+
+  const startEdit = (o: OPORD) => {
+    setEditingOPORD(o);
+    const drafts: Record<string, string> = {};
+    for (const key of Object.keys(PARAGRAPH_LABELS)) {
+      drafts[key] = paragraphText(o.paragraphs[key] ?? {});
+    }
+    setParagraphDrafts(drafts);
+  };
+
+  const saveOPORD = async () => {
+    if (!editingOPORD) return;
+    setBusy(true);
+    setError(null);
+    try {
+      for (const key of Object.keys(PARAGRAPH_LABELS)) {
+        const text = paragraphDrafts[key] ?? "";
+        const current = paragraphText(editingOPORD.paragraphs[key] ?? {});
+        if (text !== current) {
+          await apiFetch(`/api/v1/planning/${editingOPORD.id}/paragraph/${key}`, {
+            method: "PUT",
+            body: { data: { summary: text } },
+          });
+        }
+      }
+      const refreshed = await apiFetch<BackendOPORD>(`/api/v1/planning/${editingOPORD.id}`);
+      updateOPORD(editingOPORD.id, mapOPORD(refreshed));
+      setEditingOPORD(null);
+    } catch (e) {
+      setError(apiErrorMessage(e));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const saveCOA = () => {
-    addCOA({ ...newCOA, id: `coa${Date.now()}` });
-    setNewCOA({ name: "", description: "", successProbability: 0.5, risk: 5, resources: "", duration: "" });
+    if (!newCOA.name.trim()) return;
+    const total = Object.values(newCOAScores).reduce((a, b) => a + b, 0);
+    addCOA({
+      id: `coa${Date.now()}`,
+      name: newCOA.name,
+      description: newCOA.description,
+      successProbability: Math.round((total / (COA_CRITERIA.length * 10)) * 100) / 100,
+      risk: 10 - Math.round(total / COA_CRITERIA.length),
+      resources: newCOA.resources,
+      duration: newCOA.duration,
+      scores: { ...newCOAScores },
+    });
+    setNewCOA({ name: "", description: "", resources: "", duration: "" });
+    setNewCOAScores(Object.fromEntries(COA_CRITERIA.map(c => [c, 5])));
   };
 
-  const saveRisk = () => {
-    const residualRisk = Math.max(1, newRisk.probability + newRisk.impact - Math.min(newRisk.probability, newRisk.impact));
-    addRisk({ ...newRisk, id: `r${Date.now()}`, residualRisk: Math.min(5, residualRisk) });
-    setNewRisk({ hazard: "", probability: 3, impact: 3, mitigation: "" });
+  const compareCOAs = async () => {
+    if (coas.length === 0) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await apiFetch<COAComparison>("/api/v1/planning/coa-compare", {
+        method: "POST",
+        body: { coa_list: coas.map(c => ({ id: c.id, name: c.name, ...c.scores })) },
+      });
+      setComparison(result);
+    } catch (e) {
+      setError(apiErrorMessage(e));
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const riskMatrixColor = (p: number, i: number) => {
-    const score = p * i;
-    if (score >= 16) return "bg-red-600";
-    if (score >= 9) return "bg-orange-600";
-    if (score >= 4) return "bg-yellow-600";
-    return "bg-green-600";
+  const runRiskAssessment = async () => {
+    if (!riskOpordId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await apiFetch<OPORDRiskAssessment>(`/api/v1/planning/${riskOpordId}/risk-assessment`);
+      setRiskAssessment(result);
+    } catch (e) {
+      setError(apiErrorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const runSyncMatrix = async () => {
+    if (!syncOpordId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await apiFetch<OPORDSyncMatrix>(`/api/v1/planning/${syncOpordId}/sync-matrix`);
+      setSyncMatrix(result);
+    } catch (e) {
+      setError(apiErrorMessage(e));
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -79,7 +192,7 @@ export default function PlanningPanel() {
           return (
             <button
               key={t.id}
-              onClick={() => setTab(t.id)}
+              onClick={() => { setTab(t.id); setError(null); }}
               className={`flex items-center gap-1 text-[10px] px-2 py-1.5 border-b-2 transition-colors ${
                 tab === t.id ? "border-green-400 text-green-400" : "border-transparent text-gray-500 hover:text-gray-300"
               }`}
@@ -92,16 +205,57 @@ export default function PlanningPanel() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-2">
+        {error && <div className="text-[10px] font-mono text-red-400 mb-1">{error}</div>}
+
         {tab === "opord" && (
           <div className="space-y-2">
             {!editingOPORD ? (
               <>
-                <button
-                  onClick={startNewOPORD}
-                  className="flex items-center gap-1 text-[10px] bg-green-900/30 text-green-400 px-2 py-1 rounded border border-green-700 hover:bg-green-900/50 transition-colors"
-                >
-                  <Plus size={10} /> Nueva OPORD
-                </button>
+                <div className="space-y-1">
+                  <input
+                    value={newOpName}
+                    onChange={e => setNewOpName(e.target.value)}
+                    placeholder="Nombre de operacion"
+                    className="w-full bg-gray-800 text-gray-300 text-xs rounded px-2 py-1 border border-gray-700"
+                  />
+                  <div className="flex gap-1">
+                    <select
+                      value={newOpClass}
+                      onChange={e => setNewOpClass(e.target.value)}
+                      className="flex-1 bg-gray-800 text-gray-300 text-[10px] rounded px-1 py-1 border border-gray-700"
+                    >
+                      <option value="RESTRICTED">RESTRINGIDO</option>
+                      <option value="CONFIDENTIAL">CONFIDENCIAL</option>
+                      <option value="SECRET">SECRETO</option>
+                      <option value="TOP_SECRET">ALTO SECRETO</option>
+                    </select>
+                    <button
+                      onClick={() => void createOPORD()}
+                      disabled={busy || !newOpName.trim()}
+                      className="bg-green-800 hover:bg-green-700 disabled:opacity-50 text-green-100 text-[10px] px-2 py-1 rounded flex items-center gap-1 transition-colors"
+                    >
+                      <Plus size={10} /> Nueva OPORD
+                    </button>
+                  </div>
+                  <div className="flex gap-1">
+                    <input
+                      value={loadId}
+                      onChange={e => setLoadId(e.target.value)}
+                      placeholder="Cargar OPORD por ID..."
+                      className="flex-1 bg-gray-800 text-gray-300 text-[10px] rounded px-2 py-1 border border-gray-700"
+                    />
+                    <button
+                      onClick={() => void loadOPORD(loadId)}
+                      disabled={busy || !loadId.trim()}
+                      className="bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-gray-300 text-[10px] px-2 py-1 rounded border border-gray-700 flex items-center gap-1 transition-colors"
+                    >
+                      <FolderOpen size={10} /> Cargar
+                    </button>
+                  </div>
+                </div>
+                {opords.length === 0 && (
+                  <div className="text-xs font-mono text-gray-600">Sin OPORDs cargadas</div>
+                )}
                 {opords.map(o => (
                   <div key={o.id} className="text-xs font-mono p-2 rounded bg-gray-800/50 border border-gray-700">
                     <div className="flex items-center justify-between mb-1">
@@ -114,8 +268,11 @@ export default function PlanningPanel() {
                         {o.status}
                       </span>
                     </div>
+                    <div className="text-[10px] text-gray-600 mb-1">
+                      {o.classification} — ID: {o.id}
+                    </div>
                     <button
-                      onClick={() => setEditingOPORD(o)}
+                      onClick={() => startEdit(o)}
                       className="text-[10px] text-gray-500 hover:text-gray-300"
                     >
                       Editar...
@@ -125,24 +282,13 @@ export default function PlanningPanel() {
               </>
             ) : (
               <div className="space-y-1">
-                <input
-                  value={editingOPORD.operationName}
-                  onChange={e => setEditingOPORD({ ...editingOPORD, operationName: e.target.value })}
-                  placeholder="Nombre de operacion"
-                  className="w-full bg-gray-800 text-green-400 text-xs rounded px-2 py-1 border border-gray-700 font-bold"
-                />
-                {[
-                  { key: "paragraph1_situation", label: "1. SITUACION" },
-                  { key: "paragraph2_mission", label: "2. MISION" },
-                  { key: "paragraph3_execution", label: "3. EJECUCION" },
-                  { key: "paragraph4_sustainment", label: "4. SOSTENIMIENTO" },
-                  { key: "paragraph5_commandSignal", label: "5. MANDO Y SENALES" },
-                ].map(p => (
-                  <div key={p.key}>
-                    <label className="text-[10px] text-gray-500 font-bold">{p.label}</label>
+                <div className="text-green-400 text-xs font-bold font-mono">{editingOPORD.operationName}</div>
+                {Object.entries(PARAGRAPH_LABELS).map(([key, label]) => (
+                  <div key={key}>
+                    <label className="text-[10px] text-gray-500 font-bold">{label}</label>
                     <textarea
-                      value={editingOPORD[p.key as keyof OPORD] as string}
-                      onChange={e => setEditingOPORD({ ...editingOPORD, [p.key]: e.target.value })}
+                      value={paragraphDrafts[key] ?? ""}
+                      onChange={e => setParagraphDrafts({ ...paragraphDrafts, [key]: e.target.value })}
                       className="w-full bg-gray-800 text-gray-300 text-xs rounded px-2 py-1 border border-gray-700 resize-none h-16"
                     />
                   </div>
@@ -155,10 +301,11 @@ export default function PlanningPanel() {
                     Cancelar
                   </button>
                   <button
-                    onClick={saveOPORD}
-                    className="flex-1 bg-green-800 hover:bg-green-700 text-green-100 text-[10px] px-2 py-1 rounded transition-colors"
+                    onClick={() => void saveOPORD()}
+                    disabled={busy}
+                    className="flex-1 bg-green-800 hover:bg-green-700 disabled:opacity-50 text-green-100 text-[10px] px-2 py-1 rounded transition-colors"
                   >
-                    Guardar
+                    {busy ? "Guardando..." : "Guardar"}
                   </button>
                 </div>
               </div>
@@ -169,6 +316,9 @@ export default function PlanningPanel() {
         {tab === "coa" && (
           <div className="space-y-2">
             <div className="space-y-1">
+              {coas.length === 0 && (
+                <div className="text-xs font-mono text-gray-600">Sin COAs definidas</div>
+              )}
               {coas.map(c => (
                 <div key={c.id} className="text-xs font-mono p-2 rounded bg-gray-800/50 border border-gray-700">
                   <div className="flex items-center justify-between mb-0.5">
@@ -218,6 +368,20 @@ export default function PlanningPanel() {
                     className="w-20 bg-gray-800 text-gray-300 text-[10px] rounded px-2 py-1 border border-gray-700"
                   />
                 </div>
+                <div className="grid grid-cols-5 gap-1">
+                  {COA_CRITERIA.map(crit => (
+                    <div key={crit}>
+                      <div className="text-[8px] text-gray-600 uppercase truncate">{crit.slice(0, 6)}</div>
+                      <select
+                        value={newCOAScores[crit] ?? 5}
+                        onChange={e => setNewCOAScores({ ...newCOAScores, [crit]: Number(e.target.value) })}
+                        className="w-full bg-gray-800 text-gray-300 text-[10px] rounded px-1 py-0.5 border border-gray-700"
+                      >
+                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(v => <option key={v} value={v}>{v}</option>)}
+                      </select>
+                    </div>
+                  ))}
+                </div>
                 <button
                   onClick={saveCOA}
                   className="w-full bg-green-800 hover:bg-green-700 text-green-100 text-[10px] px-2 py-1 rounded transition-colors"
@@ -228,153 +392,176 @@ export default function PlanningPanel() {
             </div>
 
             <div className="border-t border-gray-700 pt-2">
-              <div className="text-[10px] text-gray-500 font-bold mb-1">MATRIZ COMPARATIVA</div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-[10px] font-mono">
-                  <thead>
-                    <tr className="text-gray-500">
-                      <th className="text-left py-0.5">COA</th>
-                      <th className="text-center py-0.5">Exito</th>
-                      <th className="text-center py-0.5">Riesgo</th>
-                      <th className="text-center py-0.5">Duracion</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {coas.map(c => (
-                      <tr key={c.id} className="text-gray-300">
-                        <td className="py-0.5">{c.name}</td>
-                        <td className="text-center text-green-400">{Math.round(c.successProbability * 100)}%</td>
-                        <td className="text-center text-orange-400">{c.risk}/10</td>
-                        <td className="text-center">{c.duration}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <button
+                onClick={() => void compareCOAs()}
+                disabled={busy || coas.length === 0}
+                className="w-full bg-blue-900/30 hover:bg-blue-900/50 disabled:opacity-50 text-blue-400 text-[10px] px-2 py-1 rounded border border-blue-800 flex items-center justify-center gap-1 transition-colors"
+              >
+                <BarChart3 size={10} /> Comparar COAs (backend)
+              </button>
+              {comparison && (
+                <div className="mt-2 space-y-1">
+                  <div className="text-[10px] text-green-400 font-bold">{comparison.recommendation}</div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-[10px] font-mono">
+                      <thead>
+                        <tr className="text-gray-500">
+                          <th className="text-left py-0.5">COA</th>
+                          {comparison.criteria.map(c => (
+                            <th key={c} className="text-center py-0.5">{c.slice(0, 4).toUpperCase()}</th>
+                          ))}
+                          <th className="text-center py-0.5">TOTAL</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {comparison.coa_evaluations.map(ev => (
+                          <tr key={ev.coa_id} className="text-gray-300">
+                            <td className="py-0.5">{ev.name}</td>
+                            {comparison.criteria.map(c => (
+                              <td key={c} className="text-center">{ev.scores[c] ?? "—"}</td>
+                            ))}
+                            <td className="text-center text-green-400 font-bold">{ev.total_score}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
 
         {tab === "risk" && (
           <div className="space-y-2">
-            <div className="space-y-1">
-              {risks.map(r => (
-                <div key={r.id} className="text-xs font-mono p-2 rounded bg-gray-800/50 border border-gray-700">
-                  <div className="flex items-center justify-between mb-0.5">
-                    <span className="text-gray-300 font-bold">{r.hazard}</span>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-                      r.residualRisk >= 4 ? "text-red-400 bg-red-900/20" :
-                      r.residualRisk >= 2 ? "text-yellow-400 bg-yellow-900/20" :
-                      "text-green-400 bg-green-900/20"
-                    }`}>
-                      Riesgo: {r.residualRisk}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 text-[10px]">
-                    <span className="text-gray-500">P:{r.probability}</span>
-                    <span className="text-gray-500">I:{r.impact}</span>
-                    <span className="text-gray-600">|</span>
-                    <span className="text-gray-400">Mitigacion: {r.mitigation}</span>
-                  </div>
-                </div>
-              ))}
+            <div className="flex gap-1">
+              <select
+                value={riskOpordId}
+                onChange={e => setRiskOpordId(e.target.value)}
+                className="flex-1 bg-gray-800 text-gray-300 text-[10px] rounded px-1 py-1 border border-gray-700"
+              >
+                <option value="">Seleccionar OPORD...</option>
+                {opords.map(o => (
+                  <option key={o.id} value={o.id}>{o.operationName}</option>
+                ))}
+              </select>
+              <button
+                onClick={() => void runRiskAssessment()}
+                disabled={busy || !riskOpordId}
+                className="bg-yellow-900/30 hover:bg-yellow-900/50 disabled:opacity-50 text-yellow-400 text-[10px] px-2 py-1 rounded border border-yellow-800 transition-colors"
+              >
+                Evaluar
+              </button>
             </div>
 
-            <div className="border-t border-gray-700 pt-2">
-              <div className="text-[10px] text-gray-500 font-bold mb-1">MATRIZ DE RIESGO</div>
-              <div className="grid grid-cols-6 gap-0.5 text-[9px] font-mono">
-                <div />
-                {[1, 2, 3, 4, 5].map(i => (
-                  <div key={i} className="text-center text-gray-600 py-0.5">I:{i}</div>
-                ))}
-                {[1, 2, 3, 4, 5].map(p => (
-                  <>
-                    <div key={`p${p}`} className="text-gray-600 py-0.5">P:{p}</div>
-                    {[1, 2, 3, 4, 5].map(i => (
-                      <div key={`c${p}${i}`} className={`h-6 rounded-sm ${riskMatrixColor(p, i)} flex items-center justify-center text-white text-[8px]`}>
-                        {p * i}
-                      </div>
-                    ))}
-                  </>
-                ))}
-              </div>
-            </div>
+            {opords.length === 0 && (
+              <div className="text-xs font-mono text-gray-600">Cargue una OPORD para evaluar riesgos</div>
+            )}
 
-            <div className="border-t border-gray-700 pt-2">
-              <div className="text-[10px] text-gray-500 font-bold mb-1">NUEVO RIESGO</div>
+            {riskAssessment && (
               <div className="space-y-1">
-                <input
-                  value={newRisk.hazard}
-                  onChange={e => setNewRisk({ ...newRisk, hazard: e.target.value })}
-                  placeholder="Peligro"
-                  className="w-full bg-gray-800 text-gray-300 text-[10px] rounded px-2 py-1 border border-gray-700"
-                />
-                <div className="flex gap-1">
-                  <select
-                    value={newRisk.probability}
-                    onChange={e => setNewRisk({ ...newRisk, probability: Number(e.target.value) as 1 | 2 | 3 | 4 | 5 })}
-                    className="bg-gray-800 text-gray-300 text-[10px] rounded px-1 py-1 border border-gray-700"
-                  >
-                    {[1, 2, 3, 4, 5].map(v => <option key={v} value={v}>P:{v}</option>)}
-                  </select>
-                  <select
-                    value={newRisk.impact}
-                    onChange={e => setNewRisk({ ...newRisk, impact: Number(e.target.value) as 1 | 2 | 3 | 4 | 5 })}
-                    className="bg-gray-800 text-gray-300 text-[10px] rounded px-1 py-1 border border-gray-700"
-                  >
-                    {[1, 2, 3, 4, 5].map(v => <option key={v} value={v}>I:{v}</option>)}
-                  </select>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] text-gray-500 font-bold">RIESGO GLOBAL</span>
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                    riskAssessment.overall_risk_level === "HIGH" ? "text-red-400 bg-red-900/20" :
+                    riskAssessment.overall_risk_level === "MEDIUM" ? "text-yellow-400 bg-yellow-900/20" :
+                    "text-green-400 bg-green-900/20"
+                  }`}>
+                    {riskAssessment.overall_risk_level}
+                  </span>
                 </div>
-                <input
-                  value={newRisk.mitigation}
-                  onChange={e => setNewRisk({ ...newRisk, mitigation: e.target.value })}
-                  placeholder="Mitigacion"
-                  className="w-full bg-gray-800 text-gray-300 text-[10px] rounded px-2 py-1 border border-gray-700"
-                />
-                <button
-                  onClick={saveRisk}
-                  className="w-full bg-green-800 hover:bg-green-700 text-green-100 text-[10px] px-2 py-1 rounded transition-colors"
-                >
-                  Anadir Riesgo
-                </button>
+                <div className="flex gap-2 text-[10px] font-mono">
+                  <span className="text-red-400">Altos: {riskAssessment.risk_matrix.high}</span>
+                  <span className="text-yellow-400">Medios: {riskAssessment.risk_matrix.medium}</span>
+                  <span className="text-green-400">Bajos: {riskAssessment.risk_matrix.low}</span>
+                </div>
+                {riskAssessment.risks.map(r => (
+                  <div key={r.id} className="text-xs font-mono p-2 rounded bg-gray-800/50 border border-gray-700">
+                    <div className="flex items-center justify-between mb-0.5">
+                      <span className="text-gray-300 font-bold">{r.category}</span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                        r.risk_level === "HIGH" ? "text-red-400 bg-red-900/20" :
+                        r.risk_level === "MEDIUM" ? "text-yellow-400 bg-yellow-900/20" :
+                        "text-green-400 bg-green-900/20"
+                      }`}>
+                        {r.risk_level}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-gray-500">
+                      {r.hazard} — P:{r.probability} S:{r.severity} → residual {r.residual_risk}
+                    </div>
+                  </div>
+                ))}
+                {riskAssessment.recommendations.length > 0 && (
+                  <div>
+                    <div className="text-[10px] text-gray-500 font-bold">RECOMENDACIONES</div>
+                    {riskAssessment.recommendations.map((r, i) => (
+                      <div key={i} className="text-[10px] font-mono text-gray-400">- {r}</div>
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
+            )}
           </div>
         )}
 
         {tab === "sync" && (
           <div className="space-y-2">
-            <div className="text-[10px] text-gray-500 font-bold mb-1">MATRIZ DE SINCRONIZACION</div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-[9px] font-mono">
-                <thead>
-                  <tr className="text-gray-500">
-                    <th className="text-left py-0.5 border-b border-gray-700">Hora</th>
-                    <th className="text-center py-0.5 border-b border-gray-700">Alfa</th>
-                    <th className="text-center py-0.5 border-b border-gray-700">Bravo</th>
-                    <th className="text-center py-0.5 border-b border-gray-700">Charlie</th>
-                    <th className="text-center py-0.5 border-b border-gray-700">Echo</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {[
-                    { time: "0000Z", alfa: "Preparacion", bravo: "Preparacion", charlie: "Recon", echo: "Standby" },
-                    { time: "0200Z", alfa: "Desplazamiento", bravo: "Desplazamiento", charlie: "Recon", echo: "Standby" },
-                    { time: "0400Z", alfa: "Punto Bravo", bravo: "Posicion", charlie: "Contacto", echo: "Ready" },
-                    { time: "0600Z", alfa: "Asalto F1", bravo: "Apoyo", charlie: "Flanco", echo: "CAS" },
-                    { time: "0800Z", alfa: "Consolidar", bravo: "Consolidar", charlie: "Explorar", echo: "Reabast." },
-                  ].map((row, i) => (
-                    <tr key={i} className="text-gray-400">
-                      <td className="py-0.5 text-green-400 font-bold">{row.time}</td>
-                      <td className="text-center py-0.5">{row.alfa}</td>
-                      <td className="text-center py-0.5">{row.bravo}</td>
-                      <td className="text-center py-0.5">{row.charlie}</td>
-                      <td className="text-center py-0.5">{row.echo}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="flex gap-1">
+              <select
+                value={syncOpordId}
+                onChange={e => setSyncOpordId(e.target.value)}
+                className="flex-1 bg-gray-800 text-gray-300 text-[10px] rounded px-1 py-1 border border-gray-700"
+              >
+                <option value="">Seleccionar OPORD...</option>
+                {opords.map(o => (
+                  <option key={o.id} value={o.id}>{o.operationName}</option>
+                ))}
+              </select>
+              <button
+                onClick={() => void runSyncMatrix()}
+                disabled={busy || !syncOpordId}
+                className="bg-green-900/30 hover:bg-green-900/50 disabled:opacity-50 text-green-400 text-[10px] px-2 py-1 rounded border border-green-800 transition-colors"
+              >
+                Generar
+              </button>
             </div>
+
+            {opords.length === 0 && (
+              <div className="text-xs font-mono text-gray-600">Cargue una OPORD para generar la matriz</div>
+            )}
+
+            {syncMatrix && (
+              <div className="space-y-1">
+                <div className="text-[10px] text-gray-500 font-bold">
+                  MATRIZ DE SINCRONIZACION — {syncMatrix.operation_name}
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-[9px] font-mono">
+                    <thead>
+                      <tr className="text-gray-500">
+                        <th className="text-left py-0.5 border-b border-gray-700">Fase</th>
+                        {syncMatrix.synchronization[0]
+                          ? Object.keys(syncMatrix.synchronization[0].tasks).map(t => (
+                              <th key={t} className="text-center py-0.5 border-b border-gray-700">{t}</th>
+                            ))
+                          : null}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {syncMatrix.synchronization.map(row => (
+                        <tr key={row.phase} className="text-gray-400">
+                          <td className="py-0.5 text-green-400 font-bold">{row.phase}</td>
+                          {Object.values(row.tasks).map((task, i) => (
+                            <td key={i} className="text-center py-0.5">{task.description}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

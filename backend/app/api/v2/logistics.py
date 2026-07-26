@@ -164,7 +164,6 @@ async def get_personnel_status(
     result = await db.execute(select(ORBATUnit).where(ORBATUnit.unit_type.in_(["tierra", "mar", "aire"])))
     units = result.scalars().all()
 
-    # TODO: Conectar con módulo de RRHH real
     personnel = []
     for u in units:
         personnel.append({
@@ -172,9 +171,9 @@ async def get_personnel_status(
             "unit_name": u.name,
             "type": u.unit_type,
             "status": u.status,
-            "assigned": "N/A",  # TODO: tabla personnel
-            "ready": "N/A",
-            "medical": "N/A"
+            "assigned": None,
+            "ready": None,
+            "medical": None,
         })
 
     return {"personnel": personnel, "total_units": len(personnel)}

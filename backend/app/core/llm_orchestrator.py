@@ -34,6 +34,11 @@ class LLMOrchestrator:
             self._client = httpx.AsyncClient(timeout=settings.OLLAMA_TIMEOUT)
         return self._client
 
+    async def close(self):
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
+
     async def query(self, persona: str, prompt: str, context: dict = None) -> str:
         system_prompt = PERSONAS.get(persona, PERSONAS["intel_analyst"])
         full_prompt = system_prompt + "\n\n"

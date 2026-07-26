@@ -1,23 +1,86 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.osint.deps import *
-    CurrentUser,
+from app.api.osint.deps import (
     DBSession,
     assert_resource_access,
+    get_current_active_user,
+    get_db,
     require_scope,
     user_can_access_classification,
 )
 from app.db.models.osint.case import Case, CasePriority, CaseStatus
-from app.db.models.osint.entity import Entity
-from app.db.models.osint.evidence import Evidence
-from app.db.models.osint.job import Job
-from app.db.models.osint.case import CaseCreate, CaseListItem, CaseResponse, CaseStatusUpdate, CaseUpdate
+
+
+# ---------------------------------------------------------------------------
+# Pydantic schemas
+# ---------------------------------------------------------------------------
+
+
+class CaseCreate(BaseModel):
+    title: str
+    description: str = ""
+    priority: str = CasePriority.MEDIUM
+    tags: list[str] = []
+    classification: str = "UNCLASSIFIED"
+    scope_notes: str = ""
+
+    model_config = {"from_attributes": True}
+
+
+class CaseUpdate(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    priority: str | None = None
+    tags: list[str] | None = None
+    classification: str | None = None
+    scope_notes: str | None = None
+
+
+class CaseStatusUpdate(BaseModel):
+    status: str
+
+
+class CaseListItem(BaseModel):
+    id: str
+    title: str
+    status: str
+    priority: str
+    classification: str
+    operator_id: str
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    entity_count: int = 0
+    evidence_count: int = 0
+    job_count: int = 0
+
+    model_config = {"from_attributes": True}
+
+
+class CaseResponse(BaseModel):
+    id: str
+    title: str
+    description: str
+    status: str
+    priority: str
+    classification: str
+    operator_id: str
+    tags: list[str] = []
+    scope_notes: str = ""
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    entity_count: int = 0
+    evidence_count: int = 0
+    job_count: int = 0
+
+    model_config = {"from_attributes": True}
 
 router = APIRouter()
 

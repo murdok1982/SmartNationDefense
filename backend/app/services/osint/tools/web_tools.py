@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import ipaddress
+import socket
 import time
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import httpx
 
@@ -31,6 +33,18 @@ _DEFAULT_HEADERS = {
     "Accept-Language": "en-US,en;q=0.5",
 }
 
+def _is_blocked_ip(addr) -> bool:
+    return (
+        addr.is_private
+        or addr.is_loopback
+        or addr.is_reserved
+        or addr.is_link_local
+        or addr.is_multicast
+        or addr.is_unspecified
+        or any(addr in net for net in _BLOCKED_NETWORKS)
+    )
+
+
 def _is_safe_url(url: str) -> bool:
     """SSRF prevention: block private/internal IPs and known internal hostnames."""
     try:
@@ -44,7 +58,7 @@ def _is_safe_url(url: str) -> bool:
             return False
         try:
             addr = ipaddress.ip_address(host)
-            return not any(addr in net for net in _BLOCKED_NETWORKS)
+            return not _is_blocked_ip(addr)
         except ValueError:
             # Hostname — block if it ends with .local, .internal, or .localhost
             lower = host.lower()
@@ -53,6 +67,56 @@ def _is_safe_url(url: str) -> bool:
             return True
     except Exception:
         return False
+
+
+async def is_safe_url_async(url: str) -> bool:
+    """Valida la URL y resuelve DNS para bloquear IPs privadas/loopback/reservadas
+    (mitiga DNS rebinding)."""
+    if not _is_safe_url(url):
+        return False
+    host = urlparse(url).hostname or ""
+    try:
+        ipaddress.ip_address(host)
+        return True
+    except ValueError:
+        pass
+    try:
+        loop = asyncio.get_running_loop()
+        infos = await loop.getaddrinfo(host, None, type=socket.SOCK_STREAM)
+    except Exception:
+        return False
+    if not infos:
+        return False
+    for info in infos:
+        try:
+            addr = ipaddress.ip_address(info[4][0])
+        except ValueError:
+            return False
+        if _is_blocked_ip(addr):
+            return False
+    return True
+
+
+async def safe_http_get(
+    client: httpx.AsyncClient,
+    url: str,
+    headers: dict | None = None,
+    max_redirects: int = 5,
+) -> httpx.Response:
+    """GET con validacion SSRF en cada salto de redireccion."""
+    current = url
+    for _ in range(max_redirects + 1):
+        if not await is_safe_url_async(current):
+            raise ValueError("URL blocked (SSRF protection)")
+        resp = await client.get(current, headers=headers or _DEFAULT_HEADERS, follow_redirects=False)
+        if resp.is_redirect:
+            location = resp.headers.get("location")
+            if not location:
+                return resp
+            current = urljoin(current, location)
+            continue
+        return resp
+    raise ValueError("Too many redirects")
 
 class WebFetchTool(ToolBase):
     name = "web_fetch"
@@ -76,8 +140,8 @@ class WebFetchTool(ToolBase):
         t0 = time.monotonic()
 
         try:
-            async with httpx.AsyncClient(timeout=timeout, follow_redirects=follow_redirects) as client:
-                resp = await client.get(url, headers=_DEFAULT_HEADERS)
+            async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
+                resp = await safe_http_get(client, url, max_redirects=5 if follow_redirects else 0)
                 resp.raise_for_status()
                 content_type = resp.headers.get("content-type", "")
                 final_url = str(resp.url)
@@ -162,7 +226,7 @@ class IpGeolocationTool(ToolBase):
         except ValueError:
             return ToolResult(success=False, data=None, source=ip, method="ip_geolocation", error="Invalid IP")
 
-        url = f"http://ip-api.com/json/{ip}?fields=status,message,country,countryCode,region,regionName,city,lat,lon,timezone,isp,org,as,asname"
+        url = f"https://ip-api.com/json/{ip}?fields=status,message,country,countryCode,region,regionName,city,lat,lon,timezone,isp,org,as,asname"
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 resp = await client.get(url)

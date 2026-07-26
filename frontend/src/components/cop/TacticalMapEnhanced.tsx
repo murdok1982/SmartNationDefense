@@ -1,7 +1,7 @@
 "use client";
 import dynamic from "next/dynamic";
 import { useState, useRef, useEffect } from "react";
-import { Layers, Ruler, Circle, Crosshair, Navigation, Maximize2, Minimize2, Info } from "lucide-react";
+import { Layers, Ruler, Circle, Maximize2, Minimize2 } from "lucide-react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { useCOPStore } from "@/store/cop-store";

@@ -5,6 +5,8 @@ import logging
 from typing import List, Optional, Dict, Any, Tuple
 from dataclasses import dataclass, field
 
+from app.services.terrain.elevation import fetch_elevations
+
 logger = logging.getLogger(__name__)
 
 
@@ -100,15 +102,11 @@ def _intermediate_point(p1: GeoPoint, p2: GeoPoint, fraction: float) -> GeoPoint
     return GeoPoint(lat=math.degrees(lat), lon=math.degrees(lon))
 
 
-def _simulate_elevation(lat: float, lon: float) -> float:
-    base = 200.0
-    variation = 150 * math.sin(lat * 10) * math.cos(lon * 10)
-    noise = 50 * math.sin(lat * 50 + lon * 30)
-    return max(0, base + variation + noise)
-
-
 class TerrainService:
     DEM_RESOLUTION = 0.001
+    MAX_LOS_SAMPLES = 64
+    MAX_ROUTE_WAYPOINTS = 25
+    GRID_SIZE = 5
 
     async def line_of_sight(
         self,
@@ -117,19 +115,18 @@ class TerrainService:
         observer_height_m: float = 2.0,
         target_height_m: float = 2.0,
     ) -> Dict[str, Any]:
-        obs = GeoPoint(
-            lat=observer["lat"],
-            lon=observer["lon"],
-            elevation=observer.get("elevation", _simulate_elevation(observer["lat"], observer["lon"])),
-        )
-        tgt = GeoPoint(
-            lat=target["lat"],
-            lon=target["lon"],
-            elevation=target.get("elevation", _simulate_elevation(target["lat"], target["lon"])),
-        )
+        obs = GeoPoint(lat=observer["lat"], lon=observer["lon"])
+        tgt = GeoPoint(lat=target["lat"], lon=target["lon"])
 
         distance_km = _haversine_km(obs, tgt)
-        num_samples = max(10, int(distance_km / self.DEM_RESOLUTION))
+        num_samples = min(self.MAX_LOS_SAMPLES, max(10, int(distance_km / self.DEM_RESOLUTION)))
+
+        sample_points = [_intermediate_point(obs, tgt, i / num_samples) for i in range(num_samples + 1)]
+        elevations = await fetch_elevations([(p.lat, p.lon) for p in sample_points])
+
+        obs.elevation = float(observer["elevation"]) if "elevation" in observer else elevations[0]
+        tgt.elevation = float(target["elevation"]) if "elevation" in target else elevations[-1]
+
         profile = []
         obstructions = []
         min_clearance = float('inf')
@@ -138,10 +135,9 @@ class TerrainService:
         obs_effective_elev = obs.elevation + observer_height_m
         tgt_effective_elev = tgt.elevation + target_height_m
 
-        for i in range(num_samples + 1):
+        for i, point in enumerate(sample_points):
             frac = i / num_samples
-            point = _intermediate_point(obs, tgt, frac)
-            terrain_elev = _simulate_elevation(point.lat, point.lon)
+            terrain_elev = elevations[i]
             line_elev = obs_effective_elev + (tgt_effective_elev - obs_effective_elev) * frac
 
             clearance = line_elev - terrain_elev
@@ -172,6 +168,7 @@ class TerrainService:
             "target": {"lat": tgt.lat, "lon": tgt.lon, "elevation_m": tgt.elevation},
             "profile": profile,
             "obstructions": obstructions,
+            "source": "OPEN_ELEVATION_DEM",
         }
 
     async def route_analysis(
@@ -193,37 +190,40 @@ class TerrainService:
         }
         base_speed = speed_map.get(vehicle_type.upper(), 5.0)
 
-        num_waypoints = max(5, int(_haversine_km(start_pt, end_pt) / 2))
+        num_waypoints = min(self.MAX_ROUTE_WAYPOINTS, max(5, int(_haversine_km(start_pt, end_pt) / 2)))
+
+        endpoints: List[GeoPoint] = []
+        for i in range(num_waypoints):
+            endpoints.append(_intermediate_point(start_pt, end_pt, i / num_waypoints))
+            endpoints.append(_intermediate_point(start_pt, end_pt, (i + 1) / num_waypoints))
+        elevations = await fetch_elevations([(p.lat, p.lon) for p in endpoints])
+
         segments = []
         total_distance = 0.0
         total_cost = 0.0
         obstacles_found = []
 
         for i in range(num_waypoints):
-            frac_start = i / num_waypoints
-            frac_end = (i + 1) / num_waypoints
-            seg_start = _intermediate_point(start_pt, end_pt, frac_start)
-            seg_end = _intermediate_point(start_pt, end_pt, frac_end)
-
-            seg_start.elevation = _simulate_elevation(seg_start.lat, seg_start.lon)
-            seg_end.elevation = _simulate_elevation(seg_end.lat, seg_end.lon)
+            seg_start = endpoints[2 * i]
+            seg_end = endpoints[2 * i + 1]
+            seg_start.elevation = elevations[2 * i]
+            seg_end.elevation = elevations[2 * i + 1]
 
             dist = _haversine_km(seg_start, seg_end)
             elev_diff = seg_end.elevation - seg_start.elevation
             slope = math.degrees(math.atan2(elev_diff, dist * 1000)) if dist > 0 else 0
 
-            terrain_type = self._classify_terrain(seg_start, seg_end)
+            avg_elev = (seg_start.elevation + seg_end.elevation) / 2
+            terrain_type = self._classify_terrain(avg_elev)
             terrain_cost_factor = self._terrain_cost_factor(terrain_type, vehicle_type)
             slope_factor = 1.0 + abs(slope) / 10.0
             cost = dist * terrain_cost_factor * slope_factor
 
             seg_obstacles = []
-            if terrain_type == "WATER":
-                seg_obstacles.append("Cruce de rio requerido")
             if abs(slope) > 30:
                 seg_obstacles.append(f"Pendiente extrema: {abs(slope):.1f} grados")
-            if terrain_type == "URBAN":
-                seg_obstacles.append("Zona urbana - navegacion restringida")
+            elif abs(slope) > 15:
+                seg_obstacles.append(f"Pendiente severa: {abs(slope):.1f} grados")
 
             segment = RouteSegment(
                 start=seg_start,
@@ -245,12 +245,10 @@ class TerrainService:
         recommendations = []
         if difficulty == "EXTREME":
             recommendations.append("Ruta extremadamente dificil - considerar alternativas")
-        if any("Cruce de rio" in o["obstacle"] for o in obstacles_found):
-            recommendations.append("Preparar equipo de cruce de rios")
         if any("Pendiente extrema" in o["obstacle"] for o in obstacles_found):
             recommendations.append("Evitar vehiculos con ruedas en pendientes extremas")
         if not recommendations:
-            recommendations.append("Ruta transitable - sin obstaculos criticos")
+            recommendations.append("Ruta transitable - sin obstaculos criticos detectados en el DEM")
 
         return {
             "route_id": str(uuid.uuid4()),
@@ -273,7 +271,49 @@ class TerrainService:
             "vehicle_type": vehicle_type,
             "obstacles": obstacles_found,
             "recommendations": recommendations,
+            "source": "OPEN_ELEVATION_DEM",
         }
+
+    async def _elevation_grid(
+        self, center_lat: float, center_lon: float, radius_km: float
+    ) -> Tuple[List[Tuple[float, float]], List[float]]:
+        n = self.GRID_SIZE
+        half = (n - 1) / 2
+        step_lat = (radius_km / 111.0) / half if half else 0.0
+        cos_lat = max(0.01, math.cos(math.radians(center_lat)))
+        step_lon = (radius_km / (111.0 * cos_lat)) / half if half else 0.0
+        points = []
+        for i in range(n):
+            for j in range(n):
+                points.append((center_lat + (i - half) * step_lat, center_lon + (j - half) * step_lon))
+        elevations = await fetch_elevations(points)
+        return points, elevations
+
+    @staticmethod
+    def _grid_spacing_m(center_lat: float, radius_km: float, n: int) -> float:
+        return (2 * radius_km * 1000) / (n - 1) if n > 1 else 1.0
+
+    def _visible_between(
+        self,
+        points: List[Tuple[float, float]],
+        elevations: List[float],
+        idx_a: int,
+        idx_b: int,
+    ) -> bool:
+        n = self.GRID_SIZE
+        lat_a, lon_a = points[idx_a]
+        lat_b, lon_b = points[idx_b]
+        elev_a, elev_b = elevations[idx_a], elevations[idx_b]
+        steps = max(2, n * 2)
+        for k in range(1, steps):
+            frac = k / steps
+            lat = lat_a + (lat_b - lat_a) * frac
+            lon = lon_a + (lon_b - lon_a) * frac
+            gi = min(range(len(points)), key=lambda m: (points[m][0] - lat) ** 2 + (points[m][1] - lon) ** 2)
+            line_elev = elev_a + (elev_b - elev_a) * frac
+            if elevations[gi] > line_elev:
+                return False
+        return True
 
     async def terrain_analysis(
         self,
@@ -283,47 +323,92 @@ class TerrainService:
         center_lon = area.get("center_lon", -3.0)
         radius_km = area.get("radius_km", 10.0)
 
-        trafficability = {
-            "INFANTRY": {"accessible_pct": 85, "restricted_zones": []},
-            "MOTORIZED": {"accessible_pct": 60, "restricted_zones": []},
-            "ARMOR": {"accessible_pct": 45, "restricted_zones": []},
-        }
+        n = self.GRID_SIZE
+        points, elevations = await self._elevation_grid(center_lat, center_lon, radius_km)
+        spacing_m = self._grid_spacing_m(center_lat, radius_km, n)
 
-        key_terrain = []
-        for i in range(3):
-            lat = center_lat + (i - 1) * 0.05
-            lon = center_lon + (i - 1) * 0.05
-            elev = _simulate_elevation(lat, lon)
-            key_terrain.append({
+        slopes: List[Tuple[int, int, float]] = []
+        for idx in range(len(points)):
+            i, j = divmod(idx, n)
+            for di, dj in ((1, 0), (0, 1)):
+                ni, nj = i + di, j + dj
+                if ni >= n or nj >= n:
+                    continue
+                nidx = ni * n + nj
+                slope = math.degrees(math.atan2(elevations[nidx] - elevations[idx], spacing_m))
+                slopes.append((idx, nidx, slope))
+
+        abs_slopes = [abs(s[2]) for s in slopes]
+        max_slope = max(abs_slopes, default=0.0)
+
+        slope_thresholds = {"INFANTRY": 30.0, "MOTORIZED": 12.0, "ARMOR": 20.0}
+        trafficability = {}
+        for vehicle, threshold in slope_thresholds.items():
+            restricted = [
+                {"from": {"lat": points[a][0], "lon": points[a][1]},
+                 "to": {"lat": points[b][0], "lon": points[b][1]},
+                 "slope_deg": round(abs(s), 1)}
+                for a, b, s in slopes if abs(s) > threshold
+            ]
+            accessible = (1 - len(restricted) / len(slopes)) * 100 if slopes else 100.0
+            trafficability[vehicle] = {
+                "accessible_pct": round(accessible, 1),
+                "slope_threshold_deg": threshold,
+                "restricted_zones": restricted,
+            }
+
+        ranked = sorted(range(len(points)), key=lambda m: elevations[m], reverse=True)
+        mean_elev = sum(elevations) / len(elevations)
+        key_terrain = [
+            {
                 "id": str(uuid.uuid4()),
-                "location": {"lat": lat, "lon": lon},
-                "elevation_m": round(elev, 1),
-                "strategic_value": "ALTO" if elev > 300 else "MEDIO",
-                "description": f"Terreno dominante en sector {i + 1}",
-            })
+                "location": {"lat": points[m][0], "lon": points[m][1]},
+                "elevation_m": round(elevations[m], 1),
+                "strategic_value": "ALTO" if elevations[m] > mean_elev else "MEDIO",
+                "description": "Terreno dominante segun DEM",
+            }
+            for m in ranked[:3]
+        ]
 
+        highest = ranked[0]
         dead_ground = []
-        for i in range(5):
-            lat = center_lat + (i * 0.02 - 0.04)
-            lon = center_lon + (i * 0.02 - 0.04)
-            dead_ground.append({
-                "id": str(uuid.uuid4()),
-                "center": {"lat": lat, "lon": lon},
-                "radius_km": 0.5,
-                "description": "Zona muerta - sin cobertura de comunicaciones",
-            })
+        visible_count = 0
+        for idx in range(len(points)):
+            if idx == highest:
+                continue
+            if self._visible_between(points, elevations, highest, idx):
+                visible_count += 1
+            else:
+                dead_ground.append({
+                    "id": str(uuid.uuid4()),
+                    "center": {"lat": points[idx][0], "lon": points[idx][1]},
+                    "radius_km": round(spacing_m / 2000, 2),
+                    "description": "Zona muerta - sin linea de vista desde terreno dominante",
+                })
 
         obstacles = []
-        for i in range(2):
-            lat = center_lat + (i * 0.03 - 0.015)
-            lon = center_lon + (i * 0.03 - 0.015)
-            obstacles.append({
-                "id": str(uuid.uuid4()),
-                "type": "NATURAL" if i == 0 else "ANTROPICO",
-                "location": {"lat": lat, "lon": lon},
-                "description": "Rio / Zona urbana" if i == 0 else "Zona edificada",
-                "severity": "MEDIA",
-            })
+        for a, b, s in slopes:
+            if abs(s) > 25:
+                obstacles.append({
+                    "id": str(uuid.uuid4()),
+                    "type": "RIDGE",
+                    "location": {
+                        "lat": (points[a][0] + points[b][0]) / 2,
+                        "lon": (points[a][1] + points[b][1]) / 2,
+                    },
+                    "description": f"Cresta/escarpe detectado en DEM - pendiente {abs(s):.1f} grados",
+                    "severity": "ALTA" if abs(s) > 40 else "MEDIA",
+                })
+
+        recommendations = []
+        if key_terrain:
+            recommendations.append("Establecer puesto de observacion en terreno dominante identificado")
+        if dead_ground:
+            recommendations.append("Instalar repetidor de comunicaciones para zonas muertas detectadas")
+        if max_slope > 30:
+            recommendations.append("Restringir movimiento de vehiculos en zonas de pendiente severa")
+        if not recommendations:
+            recommendations.append("Terreno sin restricciones criticas detectadas en el DEM")
 
         return {
             "analysis_id": str(uuid.uuid4()),
@@ -333,24 +418,20 @@ class TerrainService:
             "dead_ground": dead_ground,
             "obstacles": obstacles,
             "coverage_analysis": {
-                "vhf_coverage_pct": 65,
-                "uhf_coverage_pct": 75,
-                "los_coverage_pct": 40,
+                "los_coverage_pct": round(visible_count / (len(points) - 1) * 100, 1) if len(points) > 1 else 100.0,
+                "reference_point": {"lat": points[highest][0], "lon": points[highest][1]},
             },
-            "recommendations": [
-                "Establecer puesto de observacion en terreno dominante",
-                "Preparar rutas alternativas evitando zonas restringidas",
-                "Instalar repetidor de comunicaciones para zonas muertas",
-            ],
+            "recommendations": recommendations,
+            "source": "OPEN_ELEVATION_DEM",
         }
 
     async def get_elevation(self, lat: float, lon: float) -> Dict[str, Any]:
-        elevation = _simulate_elevation(lat, lon)
+        elevations = await fetch_elevations([(lat, lon)])
         return {
             "lat": lat,
             "lon": lon,
-            "elevation_m": round(elevation, 1),
-            "source": "DEM_SIMULATED",
+            "elevation_m": round(elevations[0], 1),
+            "source": "OPEN_ELEVATION_DEM",
         }
 
     async def detect_obstacles(
@@ -361,55 +442,50 @@ class TerrainService:
         center_lon = area.get("center_lon", -3.0)
         radius_km = area.get("radius_km", 10.0)
 
-        obstacles = []
-        obstacle_configs = [
-            ("RIVER", "Rio principal - ancho 50m, caudal medio", "ALTA"),
-            ("RIDGE", "Cresta montanosa - elevacion 400m", "MEDIA"),
-            ("URBAN", "Zona urbana densa", "MEDIA"),
-            ("FOREST", "Bosque denso - visibilidad reducida", "BAJA"),
-            ("MARSH", "Pantano - terreno intransitable", "ALTA"),
-        ]
+        n = self.GRID_SIZE
+        points, elevations = await self._elevation_grid(center_lat, center_lon, radius_km)
+        spacing_m = self._grid_spacing_m(center_lat, radius_km, n)
 
-        for i, (otype, desc, severity) in enumerate(obstacle_configs):
-            lat = center_lat + (i * 0.02 - 0.04)
-            lon = center_lon + (i * 0.015 - 0.03)
-            obstacles.append({
-                "obstacle_id": str(uuid.uuid4()),
-                "obstacle_type": otype,
-                "location": {"lat": lat, "lon": lon},
-                "description": desc,
-                "severity": severity,
-                "bypass_possible": otype not in ("MARSH",),
-                "dimensions": {"width_m": 50 + i * 20, "length_m": 200 + i * 100},
-            })
+        obstacles = []
+        for idx in range(len(points)):
+            i, j = divmod(idx, n)
+            for di, dj in ((1, 0), (0, 1)):
+                ni, nj = i + di, j + dj
+                if ni >= n or nj >= n:
+                    continue
+                nidx = ni * n + nj
+                slope = abs(math.degrees(math.atan2(elevations[nidx] - elevations[idx], spacing_m)))
+                if slope > 25:
+                    obstacles.append({
+                        "obstacle_id": str(uuid.uuid4()),
+                        "obstacle_type": "CLIFF" if slope > 45 else "RIDGE",
+                        "location": {
+                            "lat": (points[idx][0] + points[nidx][0]) / 2,
+                            "lon": (points[idx][1] + points[nidx][1]) / 2,
+                        },
+                        "description": f"Escarpe detectado en DEM - pendiente {slope:.1f} grados",
+                        "severity": "ALTA" if slope > 40 else "MEDIA",
+                        "bypass_possible": slope <= 45,
+                        "dimensions": {"length_m": round(spacing_m, 1)},
+                    })
 
         return {
             "area": area,
             "obstacles": obstacles,
             "total_count": len(obstacles),
             "critical_count": sum(1 for o in obstacles if o["severity"] == "ALTA"),
+            "source": "DEM_DERIVED",
         }
 
-    def _classify_terrain(self, p1: GeoPoint, p2: GeoPoint) -> str:
-        avg_lat = (p1.lat + p2.lat) / 2
-        avg_lon = (p1.lon + p2.lon) / 2
-        elev = _simulate_elevation(avg_lat, avg_lon)
-        if elev < 50:
+    def _classify_terrain(self, elevation: float) -> str:
+        if elevation < 50:
             return "LOWLAND"
-        elif elev < 150:
+        elif elevation < 150:
             return "PLAIN"
-        elif elev < 300:
+        elif elevation < 300:
             return "HILLS"
         else:
-            hash_val = int(abs(avg_lat * 1000 + avg_lon * 1000)) % 5
-            if hash_val == 0:
-                return "WATER"
-            elif hash_val == 1:
-                return "URBAN"
-            elif hash_val == 2:
-                return "FOREST"
-            else:
-                return "MOUNTAIN"
+            return "MOUNTAIN"
 
     def _terrain_cost_factor(self, terrain_type: str, vehicle_type: str) -> float:
         factors = {
@@ -417,9 +493,6 @@ class TerrainService:
             "LOWLAND": {"INFANTRY": 1.2, "MOTORIZED": 1.5, "ARMOR": 1.3, "WHEELED": 1.4, "TRACKED": 1.2},
             "HILLS": {"INFANTRY": 2.0, "MOTORIZED": 2.5, "ARMOR": 2.0, "WHEELED": 3.0, "TRACKED": 1.8},
             "MOUNTAIN": {"INFANTRY": 3.5, "MOTORIZED": 4.0, "ARMOR": 5.0, "WHEELED": 5.0, "TRACKED": 3.0},
-            "FOREST": {"INFANTRY": 1.8, "MOTORIZED": 2.0, "ARMOR": 2.5, "WHEELED": 2.5, "TRACKED": 2.0},
-            "WATER": {"INFANTRY": 10.0, "MOTORIZED": 10.0, "ARMOR": 10.0, "WHEELED": 10.0, "TRACKED": 10.0},
-            "URBAN": {"INFANTRY": 2.0, "MOTORIZED": 1.5, "ARMOR": 3.0, "WHEELED": 1.8, "TRACKED": 2.5},
         }
         return factors.get(terrain_type, {}).get(vehicle_type.upper(), 2.0)
 
