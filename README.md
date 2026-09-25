@@ -1,22 +1,27 @@
-# 🛡️ SmartNationDefense
+# 🛡️ SmartNationDefense / SESIS-FEDERATION
 
 <h3 align="center">
-  ────────── Sistema C4ISR de Defensa Nacional Integrada ──────────
+  ────────── Plataforma Experimental de Inteligencia y Fusión Multisensor ──────────
   <br>
-  <sub>Fusión multisensor · Computer Vision militar · COA algorítmico · COP unificado</sub>
+  <sub>Fusión multisensor · Computer Vision · Soporte a decisión algorítmico · Common Operating Picture</sub>
   <br>
-  <sub><i>El Palantir Gotham + Maven Smart System hecho en 🇪🇸 España</i></sub>
+  <sub><i>Prototipo de investigación y arquitectura de referencia para C4ISR defensivo</i></sub>
 </h3>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Versión-2.0_Integral-1a5276?style=for-the-badge&logo=codefactor" alt="Version">
-  <img src="https://img.shields.io/badge/Estado-Producción-27ae60?style=for-the-badge&logo=checkmarx" alt="Status">
-  <img src="https://img.shields.io/badge/Arquitectura-C4ISR-8e44ad?style=for-the-badge&logo=databricks" alt="Architecture">
-  <img src="https://img.shields.io/badge/Stack-React_+_FastAPI_+_Flutter-61dafb?style=for-the-badge&logo=react" alt="Stack">
-  <img src="https://img.shields.io/badge/IA-YOLOv8_+_LLM_+_Fusión-f39c12?style=for-the-badge&logo=tensorflow" alt="AI">
-  <img src="https://img.shields.io/badge/Tests-23✔_0✘-27ae60?style=for-the-badge&logo=pytest" alt="Tests">
+  <img src="https://img.shields.io/badge/Versión-2.1_Hardened-1a5276?style=for-the-badge&logo=codefactor" alt="Version">
+  <img src="https://img.shields.io/badge/Estado-Reference_Implementation-27ae60?style=for-the-badge&logo=checkmarx" alt="Status">
+  <img src="https://img.shields.io/badge/Arquitectura-Modular_C4ISR-8e44ad?style=for-the-badge&logo=databricks" alt="Architecture">
+  <img src="https://img.shields.io/badge/Stack-FastAPI_+_Next.js_+_Flutter-61dafb?style=for-the-badge&logo=react" alt="Stack">
+  <img src="https://img.shields.io/badge/IA-YOLOv8_+_LLM_+_Heurísticas-f39c12?style=for-the-badge&logo=tensorflow" alt="AI">
   <img src="https://img.shields.io/badge/Licencia-MIT-2c3e50?style=for-the-badge&logo=opensourceinitiative" alt="License">
 </p>
+
+> [!IMPORTANT]
+> **AVISO DE RESPONSABILIDAD TÉCNICA Y OPERATIVA:**
+> SmartNationDefense es un **prototipo de ingeniería de software, arquitectura de referencia e investigación tecnológica**.
+> **NO ES UN SISTEMA DE COMBATE MILITAR EN PRODUCCIÓN ("Military-Grade Production")**.
+> Todas las recomendaciones generadas por IA/LLM, simulaciones de wargaming y cursos de acción (COA) tienen carácter **ESTRICTAMENTE NO OPERATIVO / ASISTENCIA A LA DECISIÓN** y requieren **AUTORIZACIÓN HUMANA OBLIGATORIA (Human-in-the-Loop)** antes de cualquier ejecución en el mundo real.
 
 ---
 
@@ -37,22 +42,18 @@
 
 ---
 
-## 🎯 ¿Qué es esto? (Explicación para todas las edades)
+## 🎯 ¿Qué es esto? (Resumen Ejecutivo)
 
-Imagina que tienes que vigilar **todo lo que pasa en tu país**: aviones sospechosos, barcos extraños, drones no identificados, satélites que toman fotos, soldados en el terreno, amenazas en internet… todo a la vez. Necesitas mirar **8 o 9 pantallas distintas** y la información no se habla entre sí — es un lío.
+**SmartNationDefense** es una plataforma de software modular diseñada para la ingesta, normalización, correlación y visualización unificada de datos multisensor:
 
-**SmartNationDefense** es como tener un **cerebro central** que recibe información de **todas** esas fuentes, la entiende solita, y te la pinta en **una sola pantalla** súper clara. Además:
-
-- 🧠 **Analiza imágenes de satélites y drones** y te dice: "esto es un camión militar, esto es un edificio, esto cambió respecto a ayer"
-- 🎯 **Propone planes de acción**: "si atacas por aquí, el riesgo es bajo; si atacas por allá, el riesgo es alto"
-- 🔗 **Conecta sensores, radares, inteligencia humana y cibernética** todo en el mismo mapa
-- 📱 **Funciona en móviles, tablets y en web** — cada operador ve lo que necesita ver
-
-Es como el **Palantir Gotham** (el sistema que usa el ejército de EE.UU.) pero **hecho en España**, con tecnología abierta y para nuestras Fuerzas Armadas.
+- 🛰️ **Análisis de imágenes (Satélite / Dron)**: Detección y bounding boxes mediante modelos YOLOv8 y algoritmos de visión por computador.
+- 🎯 **Soporte de Cursos de Acción (COA)**: Generación algorítmica y heurística de opciones tácticas para evaluación y filtro humano.
+- 🔗 **Fusión de Datos Multisensor**: Correlación temporal y espacial de trazas de radar, telemetría y fuentes de datos abiertas (OSINT).
+- 🖥️ **Common Operating Picture (COP)**: Interfaz unificada en Web (Next.js) y cliente de campo móvil (Flutter) para monitoreo de alertas y eventos.
 
 ---
 
-## 🏗️ ¿Cómo está construido?
+## 🏗️ Arquitectura del Sistema
 
 ```ascii
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -60,24 +61,24 @@ Es como el **Palantir Gotham** (el sistema que usa el ejército de EE.UU.) pero 
 │                                                                             │
 │  ┌─────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐ │
 │  │   🛰️ SATÉLITE  │  │   📡 RADAR   │  │   ✈️ DRON    │  │   🌐 OSINT      │ │
-│  │  Imágenes    │  │  Detecciones │  │  Video feed  │  │  Redes + noticias│ │
+│  │  Imágenes    │  │  Telemetría  │  │  Video feed  │  │  Noticias / Web │ │
 │  └──────┬──────┘  └──────┬───────┘  └──────┬───────┘  └───────┬──────────┘ │
 │         │                │                  │                  │            │
 │         ▼                ▼                  ▼                  ▼            │
 │  ┌──────────────────────────────────────────────────────────────────────┐   │
-│  │                    🧬 MOTOR DE FUSIÓN (JDL 5 niveles)                │   │
+│  │                    🧬 MOTOR DE FUSIÓN (JDL Niveles 0–4)              │   │
 │  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐  │   │
 │  │  │ Nivel 0  │→│ Nivel 1  │→│ Nivel 2  │→│ Nivel 3  │→│ Nivel 4  │  │   │
 │  │  │  Señal   │ │  Objeto  │ │Situación │ │ Impacto  │ │ Proceso  │  │   │
+│  │  │(Filtro)  │ │(Correlac)│ │(Táctico) │ │ (Riesgo) │ │ (Sensores│  │   │
 │  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘  │   │
 │  └──────────────────────────────────────────────────────────────────────┘   │
 │                                    │                                        │
 │                                    ▼                                        │
 │  ┌─────────────────────────────┐  ┌──────────────────┐  ┌───────────────┐  │
-│  │  👁️ VISIÓN POR COMPUTADORA   │  │  🧠 COA ENGINE   │  │  🤖 LLM       │  │
-│  │  YOLOv8 · Detección         │  │  5 plantillas    │  │  Generación   │  │
-│  │  Clasificación táctica      │  │  Risk assessment │  │  PSYOPS ·     │  │
-│  │  Change detection           │  │  Weapon check    │  │  Síntesis     │  │
+│  │  👁️ VISIÓN POR COMPUTADORA   │  │  🧠 COA ENGINE   │  │  🤖 LLM AGENT │  │
+│  │  YOLOv8 Inferencia          │  │  Plantillas táct.│  │  Generación   │  │
+│  │  Detección cambios          │  │  Evaluación ries.│  │  estructurada │  │
 │  └─────────────────────────────┘  └──────────────────┘  └───────────────┘  │
 │                                    │                                        │
 │                                    ▼                                        │
@@ -90,60 +91,45 @@ Es como el **Palantir Gotham** (el sistema que usa el ejército de EE.UU.) pero 
 │  └──────────────────────────────────────────────────────────────────────┘   │
 │                                                                             │
 │  ┌──────────────┐  ┌────────────────┐  ┌────────────────────────────────┐  │
-│  │  🌐 Web      │  │  📱 Móvil      │  │  🛡️ Seguridad                  │  │
-│  │  Next.js    │  │  Flutter       │  │  Auth · SSRF · Rate limit     │  │
-│  │  COP real   │  │  Mesh cifrado  │  │  JWT · MFA · Audit · Crypto   │  │
+│  │  🌐 Web      │  │  📱 Móvil      │  │  🛡️ Seguridad Hardened        │  │
+│  │  Next.js    │  │  Flutter       │  │  Auth · SSRF Safe · Rate Limit │  │
+│  │  COP UI     │  │  Offline-first │  │  JWT · MFA (GCM) · Audit SHA256│  │
 │  └──────────────┘  └────────────────┘  └────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 🚀 Capacidades (¿Qué sabe hacer?)
+## 🚀 Capacidades y Estado de Implementación
 
-### 🛰️ 1. VISIÓN POR COMPUTADORA MILITAR
-| Capacidad | Cómo funciona |
-|---|---|
-| **Detectar objetivos en imágenes satélite** | YOLOv8 clasifica vehículos, blindados, fortificaciones, infantería |
-| **Detectar cambios** | Compara fotos de antes y después: "esto era un campo vacío, ahora hay una base" |
-| **Analizar video de drones** | Sigue objetos frame a frame, genera heatmap de actividad |
-| **Clasificar amenazas** | Dice si es tanque T-72, camión logístico, posición de artillería |
+### 🛰️ 1. VISIÓN POR COMPUTADORA
+| Capacidad | Estado | Funcionamiento Técnico |
+|---|:---:|---|
+| **Detección de objetos** | `VALIDADO` | Inferencia YOLOv8 sobre clases de transporte e infraestructura. |
+| **Detección de cambios** | `EXPERIMENTAL` | Comparación temporal de fotogramas satelitales vía Sentinel-2 / Landsat. |
+| **Flujo de dron** | `EXPERIMENTAL` | Extracción de contornos y cálculo de heatmap temporal. |
 
-### 🧬 2. FUSIÓN MULTISENSOR (JDL 5 niveles)
-| Nivel | Nombre | ¿Qué hace? |
-|---|---|---|
-| 0 | Señal | Filtra ruido, agrupa detecciones del mismo sensor |
-| 1 | Objeto | Une detecciones de distintos sensores (radar + satélite = el mismo barco) |
-| 2 | Situación | Reconoce formaciones tácticas: "son 3 barcos en formación de ataque" |
-| 3 | Impacto | Predice intención: "se dirige al puerto a 25 nudos, ETA 40 min" |
-| 4 | Proceso | Decide qué sensores activar para seguir vigilando |
+### 🧬 2. FUSIÓN MULTISENSOR (JDL Niveles 0–4)
+| Nivel | Nombre | Estado | Descripción |
+|---|---|:---:|---|
+| 0 | Señal | `EXPERIMENTAL` | Agrupamiento y normalización de detecciones crudas. |
+| 1 | Objeto | `EXPERIMENTAL` | Correlación espacial por distancia Haversine y ventana temporal. |
+| 2 | Situación | `EXPERIMENTAL` | Reconocimiento de formaciones y agrupaciones tácticas. |
+| 3 | Impacto | `EXPERIMENTAL` | Estimación heurística de amenaza y ventanas de oportunidad. |
+| 4 | Proceso | `EXPERIMENTAL` | Sugerencias de asignación y reconfiguración de sensores. |
 
-### 🎯 3. CURSOS DE ACCIÓN (COA) ALGORÍTMICOS
-| Plantilla | Táctica | Cuándo usarla |
-|---|---|---|
-| **Ataque frontal** | Fuerza bruta contra el punto más débil | Superioridad abrumadora |
-| **Envolvimiento** | Rodear al enemigo | Superioridad en movilidad |
-| **Penetración** | Romper la línea en un punto | Defensa estática |
-| **Fuegos indirectos** | Artillería/morteros desde cobertura | Evitar combate cercano |
-| **Asalto aéreo** | Helicópteros/paracaidistas | Golpe de mano tras líneas |
+### 🎯 3. CURSOS DE ACCIÓN (COA) Y SIMULACIÓN
+- **Carácter:** Simulación y apoyo analítico (NO OPERATIVO).
+- **Plantillas:** Envolvimiento, penetración, fuegos indirectos, defensa perimétrica.
+- **Validación:** Regla de autorización humana (Human Approval Required) en toda recomendación.
 
-### 🗺️ 4. COP UNIFICADO (Single Pane of Glass)
-- **Mapa táctico** con unidades propias, enemigas, y neutrales en tiempo real
-- **Intel feed** con reportes de inteligencia clasificados por nivel
-- **Alertas** de perímetro, ciberataques, movimiento de fuerzas
-- **COA Planner** para diseñar y comparar operaciones
-- **Logística** : estado de suministros, munición, combustible
-- **Mando por voz** : órdenes por comando de voz real (Web Speech API)
-- **After Action Review** : replay de operaciones para análisis posterior
-
-### 🛡️ 5. SEGURIDAD (Cero confianza)
-- Autenticación JWT con refresh rotation + blacklist
-- Control de acceso por niveles de clearance (RESTRICTED → SECRET → TOP SECRET)
-- Rate limiting: máximo 5 intentos de login por minuto
-- Anti-SSRF: validación DNS anti-rebinding en todas las herramientas OSINT
-- Cifrado cuántico (post-quantum ready)
-- Logs de auditoría encadenados criptográficamente (tamper-proof)
-- MFA con TOTP + WebAuthn (preparado)
+### 🛡️ 4. SEGURIDAD Y CONTROL DE ACCESO
+- **Autenticación:** JWT con claims tipados, `jti` revocable en Redis y tokens de refresco rotados.
+- **MFA:** Desafíos TOTP con secretos cifrados en reposo mediante **AES-256-GCM** y tickets de reto (`type="mfa_challenge"`) de un solo uso.
+- **Control de Acceso:** ABAC jerárquico (`OPEN` → `RESTRICTED` → `CONFIDENTIAL` → `SECRET` → `TOP_SECRET`) verificado en backend.
+- **Anti-Brute Force:** Protección distribuida con Redis y bloqueo tras 5 intentos fallidos.
+- **Anti-SSRF:** Bloqueo estricto de redes RFC 1918, CGNAT, 0.0.0.0/8, benchmarking, IPv6 local y metadata endpoints.
+- **Cadena de Auditoría:** Encadenamiento criptográfico **SHA-256** con persistencia en base de datos y control de concurrencia.
 
 ### 🌐 6. OSINT (Inteligencia de Fuentes Abiertas)
 - Búsqueda en redes sociales, foros, dark web
