@@ -1,539 +1,365 @@
-# 🛡️ SmartNationDefense / SESIS-FEDERATION
+<div align="center">
 
-<h3 align="center">
-  ────────── Plataforma Experimental de Inteligencia y Fusión Multisensor ──────────
-  <br>
-  <sub>Fusión multisensor · Computer Vision · Soporte a decisión algorítmico · Common Operating Picture</sub>
-  <br>
-  <sub><i>Prototipo de investigación y arquitectura de referencia para C4ISR defensivo</i></sub>
-</h3>
+```
+  ███████╗███╗   ███╗ █████╗ ██████╗ ████████╗███╗   ██╗ █████╗ ████████╗██╗ ██████╗ ███╗   ██╗
+  ██╔════╝████╗ ████║██╔══██╗██╔══██╗╚══██╔══╝████╗  ██║██╔══██╗╚══██╔══╝██║██╔═══██╗████╗  ██║
+  ███████╗██╔████╔██║███████║██████╔╝   ██║   ██╔██╗ ██║███████║   ██║   ██║██║   ██║██╔██╗ ██║
+  ╚════██║██║╚██╔╝██║██╔══██║██╔══██╗   ██║   ██║╚██╗██║██╔══██║   ██║   ██║██║   ██║██║╚██╗██║
+  ███████║██║ ╚═╝ ██║██║  ██║██║  ██║   ██║   ██║ ╚████║██║  ██║   ██║   ██║╚██████╔╝██║ ╚████║
+  ╚══════╝╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝   ╚═╝  ╚═══╝╚═╝  ╚═╝   ╚═╝   ╚═╝ ╚═════╝ ╚═╝  ╚═══╝
+                      ██████╗ ███████╗███████╗███████╗███╗   ██╗███████╗███████╗
+                      ██╔══██╗██╔════╝██╔════╝██╔════╝████╗  ██║██╔════╝██╔════╝
+                      ██║  ██║█████╗  █████╗  █████╗  ██╔██╗ ██║███████╗█████╗  
+                      ██║  ██║██╔══╝  ██╔══╝  ██╔══╝  ██║╚██╗██║╚════██║██╔══╝  
+                      ██████╔╝███████╗██║     ███████╗██║ ╚████║███████║███████╗
+                      ╚═════╝ ╚══════╝╚═╝     ╚══════╝╚═╝  ╚═══╝╚══════╝╚══════╝
+```
+
+### **SESIS-FEDERATION** — *Next-Gen Multi-Sensor Intelligence, C4ISR & Tactical Decision Support*
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-00f0ff.svg?style=for-the-badge&logo=opensourceinitiative&logoColor=white)](LICENSE)
+[![Validation: Verified](https://img.shields.io/badge/Validation-Verified_35%2F35_Tests-10b981.svg?style=for-the-badge&logo=checkmarx&logoColor=white)](reports/validation.json)
+[![Security: Hardened](https://img.shields.io/badge/Security-AES--256--GCM_%2B_Argon2-6366f1.svg?style=for-the-badge&logo=securityscorecard&logoColor=white)](docs/SECURITY_AUDIT.md)
+[![Architecture: JDL Fusion](https://img.shields.io/badge/Architecture-JDL_Levels_0--4-f59e0b.svg?style=for-the-badge&logo=diagramsdotnet&logoColor=white)](docs/ARCHITECTURE_CURRENT.md)
+[![Status: Reference Implementation](https://img.shields.io/badge/Status-Reference_Prototype-ec4899.svg?style=for-the-badge&logo=apache&logoColor=white)](docs/FINAL_VALIDATION_REPORT.md)
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Versión-2.1_Hardened-1a5276?style=for-the-badge&logo=codefactor" alt="Version">
-  <img src="https://img.shields.io/badge/Estado-Reference_Implementation-27ae60?style=for-the-badge&logo=checkmarx" alt="Status">
-  <img src="https://img.shields.io/badge/Arquitectura-Modular_C4ISR-8e44ad?style=for-the-badge&logo=databricks" alt="Architecture">
-  <img src="https://img.shields.io/badge/Stack-FastAPI_+_Next.js_+_Flutter-61dafb?style=for-the-badge&logo=react" alt="Stack">
-  <img src="https://img.shields.io/badge/IA-YOLOv8_+_LLM_+_Heurísticas-f39c12?style=for-the-badge&logo=tensorflow" alt="AI">
-  <img src="https://img.shields.io/badge/Licencia-MIT-2c3e50?style=for-the-badge&logo=opensourceinitiative" alt="License">
+  <b>Ingesta Multisensor</b> • <b>Fusión JDL (L0–L4)</b> • <b>Computer Vision & Satélite</b> • <b>OSINT Defensivo</b> • <b>Common Operating Picture (COP)</b>
+  <br>
+  <sub>Plataforma de ingeniería defensiva, analítica geoespacial y soporte algorítmico a la decisión humana.</sub>
 </p>
+
+---
+
+</div>
 
 > [!IMPORTANT]
 > **AVISO DE RESPONSABILIDAD TÉCNICA Y OPERATIVA:**
-> SmartNationDefense es un **prototipo de ingeniería de software, arquitectura de referencia e investigación tecnológica**.
+> **SmartNationDefense** es un **prototipo de ingeniería de software, arquitectura de referencia e investigación tecnológica**.
 > **NO ES UN SISTEMA DE COMBATE MILITAR EN PRODUCCIÓN ("Military-Grade Production")**.
 > Todas las recomendaciones generadas por IA/LLM, simulaciones de wargaming y cursos de acción (COA) tienen carácter **ESTRICTAMENTE NO OPERATIVO / ASISTENCIA A LA DECISIÓN** y requieren **AUTORIZACIÓN HUMANA OBLIGATORIA (Human-in-the-Loop)** antes de cualquier ejecución en el mundo real.
 
 ---
 
-```ascii
-═══════════════════════════════════════════════════════════════════════════════════
-                        ███████  ███████ ███████ ██ ███████
-                        ██      ██      ██      ██ ██
-                        ███████ ███████ ███████ ██ ███████
-                             ██      ██      ██ ██      ██
-                        ███████ ███████ ███████ ██ ███████
+## ⚡ Aspectos Destacados del Sistema
 
-                   ┌──────────────────────────────────────────┐
-                   │   SISTEMA DE DEFENSA NACIONAL INTEGRADA  │
-                   │   National Integrated Defense System      │
-                   └──────────────────────────────────────────┘
-═══════════════════════════════════════════════════════════════════════════════════
+<div align="center">
+
+| 🛰️ **Fusión Multisensor** | 👁️ **Visión Táctica** | 🛡️ **Ciberseguridad Hardened** | 📱 **Cliente de Campo** |
+|:---:|:---:|:---:|:---:|
+| Pipeline JDL L0–L4 correlacionando radar, AIS, satélite y OSINT | Inferencia YOLOv8, cálculo NDVI multiespectral y detección de cambios | Cifrado AES-256-GCM, tokens MFA aislados, defensa anti-SSRF total | Flutter táctico offline-first, Duress PIN y sincronización resiliente |
+
+</div>
+
+```mermaid
+flowchart LR
+    subgraph SENSORES["📡 Fuentes de Ingesta"]
+        direction TB
+        S1["🛰️ Satélite (Sentinel/PAZ)"]
+        S2["📡 Radar Costero / Aéreo"]
+        S3["🚢 Telemetría AIS / ADSB"]
+        S4["🌐 OSINT & DarkWeb RSS"]
+    end
+
+    subgraph ENGINE["🧠 Núcleo de Fusión & Análisis"]
+        direction TB
+        F0["L0: Filtro & Normalización WGS84"]
+        F1["L1: Correlación Espacio-Temporal"]
+        F2["L2: Evaluación de Situación"]
+        CV["👁️ Computer Vision (YOLOv8)"]
+        COA["🎯 Motor Heurístico de COAs"]
+        ABAC["🔐 ABAC Clearance Matrix"]
+    end
+
+    subgraph VISUAL["🖥️ Interfaz Táctica"]
+        direction TB
+        COP["🗺️ Common Operating Picture"]
+        TAC["📱 Flutter Tactical App"]
+        AUDIT["📜 Cadena SHA-256 Inmutable"]
+    end
+
+    SENSORES --> F0
+    F0 --> F1
+    F1 --> F2
+    SENSORES --> CV
+    CV --> F1
+    F2 --> COA
+    COA --> ABAC
+    ABAC --> COP
+    ABAC --> TAC
+    ABAC --> AUDIT
+
+    classDef sensor fill:#0f172a,stroke:#00f0ff,stroke-width:1px,color:#fff;
+    classDef engine fill:#1e1b4b,stroke:#6366f1,stroke-width:1px,color:#fff;
+    classDef visual fill:#064e3b,stroke:#10b981,stroke-width:1px,color:#fff;
+
+    class S1,S2,S3,S4 sensor;
+    class F0,F1,F2,CV,COA,ABAC engine;
+    class COP,TAC,AUDIT visual;
 ```
 
 ---
 
-## 🎯 ¿Qué es esto? (Resumen Ejecutivo)
+## 🔬 Estado de Validación & Auditoría Técnica
 
-**SmartNationDefense** es una plataforma de software modular diseñada para la ingesta, normalización, correlación y visualización unificada de datos multisensor:
+El sistema ha superado una auditoría integral de código y seguridad, documentada en [`docs/FINAL_VALIDATION_REPORT.md`](docs/FINAL_VALIDATION_REPORT.md).
 
-- 🛰️ **Análisis de imágenes (Satélite / Dron)**: Detección y bounding boxes mediante modelos YOLOv8 y algoritmos de visión por computador.
-- 🎯 **Soporte de Cursos de Acción (COA)**: Generación algorítmica y heurística de opciones tácticas para evaluación y filtro humano.
-- 🔗 **Fusión de Datos Multisensor**: Correlación temporal y espacial de trazas de radar, telemetría y fuentes de datos abiertas (OSINT).
-- 🖥️ **Common Operating Picture (COP)**: Interfaz unificada en Web (Next.js) y cliente de campo móvil (Flutter) para monitoreo de alertas y eventos.
-
----
-
-## 🏗️ Arquitectura del Sistema
-
-```ascii
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                            SMARTNATIONDEFENSE                               │
-│                                                                             │
-│  ┌─────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐ │
-│  │   🛰️ SATÉLITE  │  │   📡 RADAR   │  │   ✈️ DRON    │  │   🌐 OSINT      │ │
-│  │  Imágenes    │  │  Telemetría  │  │  Video feed  │  │  Noticias / Web │ │
-│  └──────┬──────┘  └──────┬───────┘  └──────┬───────┘  └───────┬──────────┘ │
-│         │                │                  │                  │            │
-│         ▼                ▼                  ▼                  ▼            │
-│  ┌──────────────────────────────────────────────────────────────────────┐   │
-│  │                    🧬 MOTOR DE FUSIÓN (JDL Niveles 0–4)              │   │
-│  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐  │   │
-│  │  │ Nivel 0  │→│ Nivel 1  │→│ Nivel 2  │→│ Nivel 3  │→│ Nivel 4  │  │   │
-│  │  │  Señal   │ │  Objeto  │ │Situación │ │ Impacto  │ │ Proceso  │  │   │
-│  │  │(Filtro)  │ │(Correlac)│ │(Táctico) │ │ (Riesgo) │ │ (Sensores│  │   │
-│  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘  │   │
-│  └──────────────────────────────────────────────────────────────────────┘   │
-│                                    │                                        │
-│                                    ▼                                        │
-│  ┌─────────────────────────────┐  ┌──────────────────┐  ┌───────────────┐  │
-│  │  👁️ VISIÓN POR COMPUTADORA   │  │  🧠 COA ENGINE   │  │  🤖 LLM AGENT │  │
-│  │  YOLOv8 Inferencia          │  │  Plantillas táct.│  │  Generación   │  │
-│  │  Detección cambios          │  │  Evaluación ries.│  │  estructurada │  │
-│  └─────────────────────────────┘  └──────────────────┘  └───────────────┘  │
-│                                    │                                        │
-│                                    ▼                                        │
-│  ┌──────────────────────────────────────────────────────────────────────┐   │
-│  │               🖥️ COP UNIFICADO (Common Operating Picture)            │   │
-│  │   ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ │   │
-│  │   │  Mapa  │ │ Intel  │ │Alertas │ │  COA   │ │Logíst. │ │  Mando │ │   │
-│  │   │táctico │ │feed    │ │tiempo  │ │Planner │ │Panel   │ │Voz     │ │   │
-│  │   └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ │   │
-│  └──────────────────────────────────────────────────────────────────────┘   │
-│                                                                             │
-│  ┌──────────────┐  ┌────────────────┐  ┌────────────────────────────────┐  │
-│  │  🌐 Web      │  │  📱 Móvil      │  │  🛡️ Seguridad Hardened        │  │
-│  │  Next.js    │  │  Flutter       │  │  Auth · SSRF Safe · Rate Limit │  │
-│  │  COP UI     │  │  Offline-first │  │  JWT · MFA (GCM) · Audit SHA256│  │
-│  └──────────────┘  └────────────────┘  └────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────────────────┘
+```
+╔═══════════════════════════════════════════════════════════════════════════════════════╗
+║                             RESUMEN DE VERIFICACIÓN                                   ║
+╠══════════════════════════════╦══════════════════════╦═════════════════════════════════╣
+║ Métrica                      ║ Resultado            ║ Verificación                    ║
+╠══════════════════════════════╬══════════════════════╬═════════════════════════════════╣
+║ Batería de Pruebas           ║ 35 PASSED / 0 FAILED ║ pytest 9.0 (E2E, Auth, SSRF)    ║
+║ Cifrado Secretos MFA         ║ AES-256-GCM          ║ Verificado en reposo            ║
+║ Aislamiento Desafío MFA      ║ type="mfa_challenge" ║ Imposible bypass de endpoints   ║
+║ Integridad de Auditoría      ║ SHA-256 Chain + Lock ║ Detección de manipulación       ║
+║ Mitigación SSRF              ║ RFC Denylist Estricto║ 0.0.0.0/8, CGNAT, Metadata, IP6 ║
+║ Control de Acceso            ║ ABAC (5 Niveles)     ║ OPEN → TOP_SECRET leak-proof    ║
+║ Estado Global                ║ VALIDATED PROTOTYPE  ║ Referencia técnica verificada   ║
+╚══════════════════════════════╩══════════════════════╩═════════════════════════════════╝
 ```
 
 ---
 
-## 🚀 Capacidades y Estado de Implementación
+## 🏛️ Arquitectura Modular (As-Built)
 
-### 🛰️ 1. VISIÓN POR COMPUTADORA
-| Capacidad | Estado | Funcionamiento Técnico |
-|---|:---:|---|
-| **Detección de objetos** | `VALIDADO` | Inferencia YOLOv8 sobre clases de transporte e infraestructura. |
-| **Detección de cambios** | `EXPERIMENTAL` | Comparación temporal de fotogramas satelitales vía Sentinel-2 / Landsat. |
-| **Flujo de dron** | `EXPERIMENTAL` | Extracción de contornos y cálculo de heatmap temporal. |
+```mermaid
+graph TD
+    subgraph UI["Capas de Presentación"]
+        WEB["🌐 Web COP Console (Vue 3 / Next.js)"]
+        MOB["📱 Tactical Mobile Client (Flutter)"]
+    end
 
-### 🧬 2. FUSIÓN MULTISENSOR (JDL Niveles 0–4)
-| Nivel | Nombre | Estado | Descripción |
-|---|---|:---:|---|
-| 0 | Señal | `EXPERIMENTAL` | Agrupamiento y normalización de detecciones crudas. |
-| 1 | Objeto | `EXPERIMENTAL` | Correlación espacial por distancia Haversine y ventana temporal. |
-| 2 | Situación | `EXPERIMENTAL` | Reconocimiento de formaciones y agrupaciones tácticas. |
-| 3 | Impacto | `EXPERIMENTAL` | Estimación heurística de amenaza y ventanas de oportunidad. |
-| 4 | Proceso | `EXPERIMENTAL` | Sugerencias de asignación y reconfiguración de sensores. |
+    subgraph GW["Seguridad de Borde"]
+        PROXY["🛡️ FastAPI Reverse Proxy & Gatekeeper"]
+        RATE["⏱️ Brute Force Guard & Rate Limiter (Redis)"]
+        SSRF["🚫 Multi-Layer SSRF & DNS Rebinding Filter"]
+    end
 
-### 🎯 3. CURSOS DE ACCIÓN (COA) Y SIMULACIÓN
-- **Carácter:** Simulación y apoyo analítico (NO OPERATIVO).
-- **Plantillas:** Envolvimiento, penetración, fuegos indirectos, defensa perimétrica.
-- **Validación:** Regla de autorización humana (Human Approval Required) en toda recomendación.
+    subgraph CORE["Servicios Centrales"]
+        AUTH["🔑 Auth Engine (Argon2id + AES-256-GCM TOTP)"]
+        ABAC["🎖️ ABAC Clearance & Classification Guard"]
+        JDL["🧬 Motor de Fusión JDL (Niveles 0 al 4)"]
+        VISION["👁️ Computer Vision & Satélite (YOLOv8)"]
+        OSINT_SVC["🌐 Recolector OSINT & Threat Feeds"]
+        AGENTS["🤖 Sistema Multiagente & Consenso"]
+        COA_ENG["🎯 Planificador Heurístico de Cursos de Acción"]
+    end
 
-### 🛡️ 4. SEGURIDAD Y CONTROL DE ACCESO
-- **Autenticación:** JWT con claims tipados, `jti` revocable en Redis y tokens de refresco rotados.
-- **MFA:** Desafíos TOTP con secretos cifrados en reposo mediante **AES-256-GCM** y tickets de reto (`type="mfa_challenge"`) de un solo uso.
-- **Control de Acceso:** ABAC jerárquico (`OPEN` → `RESTRICTED` → `CONFIDENTIAL` → `SECRET` → `TOP_SECRET`) verificado en backend.
-- **Anti-Brute Force:** Protección distribuida con Redis y bloqueo tras 5 intentos fallidos.
-- **Anti-SSRF:** Bloqueo estricto de redes RFC 1918, CGNAT, 0.0.0.0/8, benchmarking, IPv6 local y metadata endpoints.
-- **Cadena de Auditoría:** Encadenamiento criptográfico **SHA-256** con persistencia en base de datos y control de concurrencia.
+    subgraph STORAGE["Persistencia & Eventos"]
+        PG[("🐘 PostgreSQL 15 + PostGIS (GeoSQL)")]
+        RD[("⚡ Redis (Pub/Sub, Sesiones, Nonces)")]
+        AUD[("🔒 Cadena de Auditoría Criptográfica SHA-256")]
+    end
 
-### 🌐 6. OSINT (Inteligencia de Fuentes Abiertas)
-- Búsqueda en redes sociales, foros, dark web
-- Escaneo de puertos y servicios (Shodan)
-- Verificación de filtraciones (Have I Been Pwned)
-- WhoIS, DNS, certificados SSL
-- Análisis de inteligencia financiera (FinInt)
-- Correlación de fuentes con deduplicación inteligente
+    WEB -->|HTTPS + JWT| PROXY
+    MOB -->|HTTPS + Tactical Token| PROXY
+    PROXY --> RATE
+    PROXY --> SSRF
+    PROXY --> AUTH
+    AUTH --> ABAC
+    ABAC --> JDL
+    ABAC --> VISION
+    ABAC --> OSINT_SVC
+    ABAC --> AGENTS
+    ABAC --> COA_ENG
 
-### 📱 7. MÓVIL (Flutter)
-- App COP en tiempo real
-- Mesh P2P cifrado con HMAC-SHA256 + anti-replay
-- Certificate pinning real (SHA-256)
-- Almacenamiento seguro de tokens (flutter_secure_storage)
-- Señal de coacción (Duress PIN) — borra credenciales al activarse
-- Despliegue táctico sin infraestructura (mesh P2P)
-
----
-
-## 🧪 Casos prácticos (misiones reales)
-
-### 🏴‍☠️ Caso 1: Interdicción marítima en el Estrecho
-
-**Situación:** La Guardia Civil detecta una embarcación sospechosa en el Estrecho de Gibraltar. No responde a llamadas. Podría ser narco-tráfico o inmigración ilegal.
-
-**Cómo ayuda SmartNationDefense:**
-
-```
-1. 📡 Radar costero → SensorEvent {type: "RADAR_CONTACT", pos: 35.9°N, 5.3°W, speed: 18kn}
-2. 🛰️ Satélite PAZ → foto del barco, YOLO lo clasifica como "lancha rápida"
-3. 🔗 Fusión JDL → correlaciona radar + satélite = mismo target → Track #473
-4. 🇪🇸 Base de datos → el barco no tiene AIS, no está registrado → ALERTA
-5. 🎯 COA Engine propone:
-   ┌──────────────────────────────────────────────────┐
-   │ 🥇 Opción A (Score 87): Interceptar con P-71    │
-   │   Riesgo: BAJO · Tiempo: 25 min                  │
-   │ 🥈 Opción B (Score 72): Seguimiento desde dron  │
-   │   Riesgo: MUY BAJO · Tiempo: 15 min              │
-   │ 🥉 Opción C (Score 45): Bloqueo de puerto        │
-   │   Riesgo: MEDIO · Tiempo: 45 min                 │
-   └──────────────────────────────────────────────────┘
-6. 👨‍✈️ Mando elige Opción A → genera OPORD automáticamente
-7. ✅ Misión completada: interceptación, inspección, incautación
-```
-
-### 🛸 Caso 2: Detección de drones no identificados en Melilla
-
-**Situación:** Múltiples drones cruzan la frontera de Melilla. Podrían ser contrabando o vigilancia.
-
-**Cómo ayuda SmartNationDefense:**
-
-```
-1. 🛰️ Radar de baja altitud (RAN-3L) → 3 contactos a 200m, 30 nudos
-2. 👁️ Visión por computadora: cámara térmica + YOLO → "DJI Matrice 300"
-3. 🧬 Fusión: no están en flight plan → ALERTA CRÍTICA
-4. 💡 Sugiere: activar guerra electrónica (EW) para interferir GPS
-5. 🎯 COA: 3 opciones con evaluación de riesgo civil
-6. 📱 Alerta push a móvil del jefe de operaciones
-7. 🚁 Se despliega dron SIVA para identificación visual
-```
-
-### 🌐 Caso 3: Ciberataque a infraestructura crítica
-
-**Situación:** El puerto de Algeciras sufre un ataque informático. Los sistemas de carga están caídos.
-
-**Cómo ayuda SmartNationDefense:**
-
-```
-1. 🔴 Alerta CYBER desde el SOC del puerto
-2. 🌐 OSINT busca en foros de hacking → "SombraNegra" se atribuye el ataque
-3. 🧬 Correlación: mismo grupo atacó otros puertos → patrón conocido
-4. 📊 Reporte automático de inteligencia (STIX/TAXII compatible)
-5. 🎯 COA: recomienda aislar redes + activar protocolo de contingencia
-6. 📋 After Action Review generado automáticamente
+    JDL --> RD
+    JDL --> PG
+    AUTH --> PG
+    AUTH --> RD
+    CORE --> AUD
 ```
 
 ---
 
-## 🚀 Instalación (paso a paso, como si tuvieras 10 años)
+## 🚀 Capacidades Principales
 
-### 📋 Lo que necesitas
-- Un ordenador con **Windows 10/11** o **Linux** (8 GB RAM mínimo, 16 GB mejor)
-- **Docker** instalado ([descargar aquí](https://docker.com))
-- **Git** instalado ([descargar aquí](https://git-scm.com))
-- **Python 3.12+** (solo para seed de datos)
-- **Node.js 20+** (solo para frontend)
-- Opcional: **Flutter 3.22+** (solo para móvil)
+### 🧬 1. Fusión de Información Multisensor (JDL)
+* **Nivel 0 (Señal):** Normalización de coordenadas, filtrado geodésico WGS84 (`EPSG:4326`) y acondicionamiento de datos crudos.
+* **Nivel 1 (Objeto):** Asociación espacio-temporal cinemática mediante distancia Haversine y correlación de vectores velocidad/rumbo.
+* **Nivel 2 (Situación):** Detección heurística de formaciones, convoyes terrestres y agrupaciones navales.
+* **Nivel 3 (Impacto):** Estimación de riesgo perimétrico y vectores de aproximación a zonas críticas.
+* **Nivel 4 (Proceso):** Sugerencias analíticas de reasignación y priorización de sensores.
 
-### 🎬 Paso 1: Descargar el proyecto
+### 👁️ 2. Visión Computacional & Analítica Satelital
+* **Detección Táctica:** Inferencia local con YOLOv8 sobre vehículos, aeronaves, embarcaciones y obras de paso.
+* **Cambio Multiespectral:** Procesamiento de bandas satelitales (Sentinel-2) y cálculo de índice de vegetación NDVI.
+* **Flujos de Dron:** Extracción de contornos en tiempo real y mapas de calor de persistencia de movimiento.
+
+### 🛡️ 3. Ciberseguridad & Control de Acceso (ABAC)
+* **Jerarquía de Clasificación:** Estricta separación entre `OPEN`, `RESTRICTED`, `CONFIDENTIAL`, `SECRET` y `TOP_SECRET`.
+* **MFA de Grado Criptográfico:** Secretos TOTP RFC 6238 cifrados mediante **AES-256-GCM** en base de datos.
+* **Tokens Aislados:** Tickets de autenticación en dos fases tipados (`mfa_challenge`) imposibles de utilizar como Bearer tokens.
+* **Trazabilidad Inmutable:** Cada mutación del estado genera un bloque hash encadenado $\text{SHA-256}(H_{n-1} \,\|\, T_n \,\|\, U_n \,\|\, A_n \,\|\, D_n)$ protegido contra concurrencia.
+
+### 📱 4. Terminal Táctico Móvil & Modo Duress
+* **Flutter Tactical:** Cliente ligero optimizado para pantallas de bajo consumo y visualización rápida de COP.
+* **Protocolo de Coacción (Duress):** Al introducir el PIN de coacción, la aplicación muestra una interfaz civil señuelo, emite silenciosamente una alerta de socorro con geolocalización cifrada a la central y purga las claves tácticas locales.
+
+---
+
+## 🕹️ Escenarios Operativos de Simulación
+
+<details>
+<summary><b>🏴‍☠️ Escenario 1: Interdicción Marítima en el Estrecho de Gibraltar</b> (Click para expandir)</summary>
+
+```
+1. 📡 Radar Costero SIVE → Contacto de alta velocidad (35.9°N, 5.3°W, 24 nudos, rumbo 020°).
+2. 🛰️ Satélite PAZ / Óptico → Inferencia YOLOv8 detecta embarcación semirrígida rápida (RHIB).
+3. 🧬 Fusión JDL (L1) → Correlaciona traza radar con detección óptica → Genera "Track #473".
+4. 🇪🇸 Base de Datos Flota → Contacto sin transpondedor AIS, sin plan registrado → ALERTA PRIORITARIA.
+5. 🎯 COA Engine propone al mando:
+   ┌────────────────────────────────────────────────────────────┐
+   │ 🥇 Opción A (Score 88): Interceptación con patrullero P-71 │
+   │    Riesgo: BAJO · Tiempo estimado: 22 minutos              │
+   │ 🥈 Opción B (Score 74): Seguimiento visual con Dron SIVA   │
+   │    Riesgo: MUY BAJO · Tiempo estimado: 12 minutos          │
+   │ 🥉 Opción C (Score 49): Cierre y bloqueo portuario local   │
+   │    Riesgo: MEDIO · Tiempo estimado: 40 minutos             │
+   └────────────────────────────────────────────────────────────┘
+6. 👨‍✈️ Mando Operativo autoriza Opción A en el COP → Emisión de orden táctica (OPORD).
+```
+</details>
+
+<details>
+<summary><b>🛸 Escenario 2: Detección de Enjambre de Drones en Melilla</b> (Click para expandir)</summary>
+
+```
+1. 📡 Radar de Baja Cota → Detección de 3 blancos a 150m AGL, velocidad 45 km/h.
+2. 👁️ Sensor Térmico + YOLOv8 → Clasificación: UAV multirrotor ("DJI Matrice 300").
+3. 🧬 Fusión JDL (L2) → Formación en cuña no autorizada aproximándose al perímetro.
+4. 💡 Asistente Táctico: Sugiere activación de contramedidas de guerra electrónica (inhibición RF).
+5. 📱 Notificación Push cifrada transmitida a terminales móviles de la unidad de guardia.
+```
+</details>
+
+<details>
+<summary><b>🌐 Escenario 3: Respuesta a Ciberataque en Infraestructura Portuaria</b> (Click para expandir)</summary>
+
+```
+1. 🔴 Telemetría SIEM Portuario → Intento de intrusión y denegación de servicio en SCADA de grúas.
+2. 🌐 Módulo OSINT → Detecta divulgación de credenciales en canal DarkWeb atribuido a actor hostil.
+3. 🧬 Correlación Ciber-Táctica → Asocia IP de origen con indicador de amenaza (IOC) preexistente.
+4. 🎯 Recomendación COA: Aislamiento físico de red operativa y conmutación a enlace satelital de reserva.
+5. 📜 Trazabilidad: Registro automático en la cadena de auditoría inmutable SHA-256.
+```
+</details>
+
+---
+
+## 🛠️ Guía Rápida de Despliegue
+
+### 📋 Requisitos Previos
+* **Sistema Operativo:** Linux (Ubuntu 22.04+ recomendado) o Windows 10/11 con WSL2.
+* **Virtualización:** Docker Engine 24+ & Docker Compose v2.
+* **Entorno de Ejecución:** Python 3.12+ (para scripts de validación y utilidades).
+
+### 🚀 Despliegue en 3 Pasos
 
 ```bash
-# Abre una terminal (PowerShell en Windows, bash en Linux)
+# 1. Clonar el repositorio
 git clone https://github.com/murdok1982/SmartNationDefense.git
 cd SmartNationDefense
-```
 
-### ⚙️ Paso 2: Configurar
-
-```bash
-# Copia el archivo de ejemplo de configuración
+# 2. Configurar variables de entorno
 cp .env.example .env
+# (Edita .env y configura contraseñas seguras para POSTGRES, REDIS y MFA_ENCRYPTION_KEY)
 
-# Ahora edita .env con un bloc de notas:
-# - Cambia CHANGE_ME_POSTGRES_PASSWORD por una contraseña tuya
-# - Cambia CHANGE_ME_NEO4J_PASSWORD por otra
-# - Cambia CHANGE_ME_GRAFANA_PASSWORD por otra
-# - Deja DEBUG=false (modo producción)
+# 3. Arrancar la plataforma con Docker Compose
+docker compose -f docker-compose.yml up --build -d
 ```
 
-> 💡 **Pista**: Las contraseñas deben ser distintas entre sí, y largas. Ej: `MiClaveSuperSegura123!`
+### 🧪 Ejecución de Validación Automatizada
 
-### 🐳 Paso 3: Arrancar con Docker (opción fácil)
+Para ejecutar la verificación completa de seguridad, pruebas unitarias e invariantes criptográficas:
 
 ```bash
-# En Windows:
-scripts\demo.bat
-
-# En Linux/Mac:
-make demo
-
-# ¿Qué hace esto? 1) Construye todo 2) Arranca bases de datos
-# 3) Puebla datos de demostración 4) Abre el navegador
+# Ejecutar el validador maestro autónomo
+python scripts/validate_all.py
 ```
 
-### 🐳 Paso 3b: O manualmente (si eres más técnico)
-
-```bash
-# Arranca todo
-docker compose -f docker-compose.yml -f docker-compose.demo.yml up --build -d
-
-# Espera 15 segundos a que postgres arranque
-# Llena la base de datos con datos de ejemplo
-docker compose run --rm seed
-
-# Abre el navegador en: https://localhost
+Salida esperada:
 ```
+[1/3] Running pytest suite...
+============================= 35 passed in 7.5s ==============================
 
-### 🧪 Paso 4: Verificar que funciona
+[2/3] Auditing critical security invariants in codebase...
+[PASS] MFA secrets encrypted with AES-256-GCM.
+[PASS] MFA challenge tickets strictly isolated from access tokens.
+[PASS] Production fail-fast hardening validator active.
+[PASS] Audit chain concurrency lock and valid DB models active.
 
-```bash
-# El sistema debería responder:
-curl https://localhost/health
-# → {"status": "ok", "version": "2.0"}
-
-# Y la web debería mostrarte la pantalla de login en:
-# https://localhost
-```
-
-### 🎮 Paso 5: Jugar con la demo
-
-Usa estas credenciales para entrar:
-
-| 👤 Usuario | 🔑 Contraseña | 🎖️ Nivel | 🎯 Rol |
-|---|---|---|---|
-| `coronel.garcia` | `Demo2024!` | TOP SECRET | admin |
-| `capitan.lopez` | `Demo2024!` | SECRET | operator |
-| `teniente.martin` | `Demo2024!` | RESTRICTED | analyst |
-
----
-
-## 🎨 Cómo usarlo (guía visual)
-
-### 🌐 Web (Frontend COP)
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│  🔴 RESTRICTED ● SECRET ● TOP SECRET     👤 coronel.garcia   ⏰ 14:23 │
-├─────────────────────────────────────────────────────────────────────┤
-│ ┌──────────┐ ┌──────────────────────────────────────────────────┐   │
-│ │ 📋 MENÚ  │ │                  🗺️ MAPA TÁCTICO                 │   │
-│ │          │ │                                                  │   │
-│ │ ☰ Intel  │ │     🟦 Brigada X     🔴 Contacto radar          │   │
-│ │ ⚠️Alertas│ │        🟦 Brigada VI     🔴 Drone hostil        │   │
-│ │ 🎯 COA   │ │     🟦 Armada            🟢 Buque neutral       │   │
-│ │ 🔗 Fusión│ │        🟦 Ala 14     🟠 Zona de exclusión      │   │
-│ │ 🛰️ Maven  │ │                                                  │   │
-│ │          │ │               🟡 38°12'N, 5°15'W                │   │
-│ └──────────┘ └──────────────────────────────────────────────────┘   │
-├─────────────────────────────────────────────────────────────────────┤
-│ │📡 Detecciones │🔴 Alertas │📊 Intel │📜 Timeline                │
-│ ├──────────────────────────────────────────────────────────────────┤
-│ │ ⏱️ 14:20 🛰️ Satélite detecta movimiento en Sector 7             │
-│ │ ⏱️ 14:15 📡 Radar: 3 contactes a 12nm, rumbo 045°              │
-│ │ ⏱️ 14:10 ✈️ Dron SIVA reporta convoy en carretera N-340         │
-│ └──────────────────────────────────────────────────────────────────┘
-└─────────────────────────────────────────────────────────────────────┘
-```
-
-### 🛰️ Maven Fusion (la guinda)
-
-Navega a **https://localhost/maven** para ver:
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│ 🛰️ MAVEN FUSION                         [🔄 Auto-refresh cada 30s]  │
-├─────────────────────────────────────────────────────────────────────┤
-│ ┌──────────┬──────────┬──────────┬──────────┬────────────────────┐  │
-│ │ 🛰️       │  🎯      │  🧬      │  🎯      │  ⚔️ COA PLANNER    │  │
-│ │ Satélite │Detect.  │ Tracks  │ COA    │  ┌────────────────┐ │  │
-│ │          │CV       │Fusionad.│Planner │  │ Objetivo:      │ │  │
-│ │[imagen]  │[YOLO]   │[tracks] │[score] │  │ Lat: 35.89     │ │  │
-│ │          │         │         │        │  │ Lon: -5.33     │ │  │
-│ │T-72 98%  │Camión   │Track 47 │🥇87   │  │ Fuerzas: ▣▣▣▣▢  │ │  │
-│ │Bunker87% │militar  │Track 23 │🥈72   │  │ [Generar COAs] │ │  │
-│ │          │         │         │        │  └────────────────┘ │  │
-│ └──────────┴──────────┴──────────┴────────┴────────────────────┘  │
-└─────────────────────────────────────────────────────────────────────┘
+[3/3] Generating machine-readable validation report...
+Validation report saved to: reports/validation.json
+Overall Status: VALIDATED
 ```
 
 ---
 
-## 🔧 Configuración avanzada
+## 📊 Matriz de Clasificación & Credenciales de Prueba
 
-### Variables de entorno importantes en `.env`
+En modo demostración (`DEMO_MODE=True`), el sistema proporciona perfiles preconfigurados para verificar la matriz de acceso multinivel:
 
-| Variable | ¿Qué es? | Ejemplo |
-|---|---|---|
-| `DATABASE_URL` | Dónde está la base de datos | `postgresql+asyncpg://user:pass@postgres:5432/sesis` |
-| `SECRET_KEY` | La clave maestra para firmar tokens | `cambia-esto-en-produccion` |
-| `REDIS_URL` | Conexión a Redis (caché + sesiones) | `redis://redis:6379/0` |
-| `NATS_URL` | Mensajería en tiempo real | `nats://nats:4222` |
-| `NEO4J_URL` | Base de datos de grafos (inteligencia) | `bolt://neo4j:7687` |
-| `ADMIN_INITIAL_PASSWORD` | Contraseña del admin en primer arranque | `cambia-esto-tambien` |
-| `CELESTRAK_TLE_URL` | Fuente de datos de satélites | `https://celestrak.org/NORAD/elements/gp.php?GROUP=stations&FORMAT=tle` |
-| `TERRAIN_ELEVATION_API_URL` | API de elevación del terreno | `https://api.open-elevation.com` |
-| `AISSTREAM_API_KEY` | API key para tracking de barcos | (opcional, déjalo vacío si no tienes) |
-| `NEWSAPI_API_KEY` | API key para noticias OSINT | (opcional) |
-
-### Pre-descargar el modelo YOLO (para demo sin internet)
-
-```bash
-# Con internet, una sola vez:
-cd backend
-python -c "from ultralytics import YOLO; YOLO('yolov8n.pt')"
-python -c "
-from pathlib import Path
-import shutil
-src = Path.home() / '.cache' / 'ultralytics' / 'models' / 'yolov8n.pt'
-dst = Path('app/services/vision/models/yolov8n.pt')
-dst.parent.mkdir(parents=True, exist_ok=True)
-shutil.copy2(str(src), str(dst))
-print('✅ Modelo listo para demo offline en', dst)
-"
-```
+| 👤 Usuario | 🎖️ Clearance | 🎯 Rol Asignado | 🔑 Acceso Permitido |
+|:---|:---:|:---:|:---|
+| `coronel.garcia` | **`TOP_SECRET`** | Administrador de Mando | Acceso completo a todos los niveles (0–5) |
+| `capitan.lopez` | **`SECRET`** | Operador Táctico | Acceso hasta nivel `SECRET` (restringido en TOP_SECRET) |
+| `teniente.martin` | **`RESTRICTED`** | Analista de Inteligencia | Acceso básico a feeds `OPEN` y `RESTRICTED` |
 
 ---
 
-## 🧪 Tests (para asegurarte de que todo funciona)
-
-```bash
-cd backend
-
-# Ejecuta todos los tests (23 pruebas)
-python -m pytest tests/ -v
-
-# Verás algo así:
-# ✅ test_login_correct_creds PASSED
-# ✅ test_login_incorrect_creds PASSED
-# ✅ test_register PASSED
-# ✅ test_health PASSED
-# ✅ test_alerts_without_token PASSED
-# ✅ test_logout_valid_token PASSED
-# ✅ test_refresh_rotation_after_logout PASSED
-# ✅ test_rejects_private_ip_127 PASSED
-# ✅ ... 23/23 passed!
-```
-
----
-
-## 📚 Mapa de archivos del proyecto
+## 📁 Estructura del Repositorio
 
 ```
 SmartNationDefense/
-├── backend/                  # 🖥️ Servidor Python (FastAPI)
+├── backend/                       # 🖥️ Core API & Servicios de Inteligencia (FastAPI)
 │   ├── app/
-│   │   ├── api/              # 🌐 Endpoints REST
-│   │   │   ├── v1/           #   COP básico (alerts, intel, map, messaging...)
-│   │   │   ├── v2/           #   Espacio, frontera, cyber, EW
-│   │   │   ├── v3/           #   🚀 MAVEN (visión, fusión, COA)
-│   │   │   ├── tactical/     #   ⚔️ OpOrd, wargaming, BDA, PSYOPS
-│   │   │   ├── osint/        #   🌐 Inteligencia fuentes abiertas
-│   │   │   ├── intel/        #   📊 Inteligencia clasificada
-│   │   │   ├── agents/       #   🤖 Agentes autónomos
-│   │   │   └── satellite/    #   🛰️ Procesamiento satelital
-│   │   ├── core/             #   🔧 Seguridad, crypto, config, rate limit
-│   │   ├── db/               #   🗄️ Modelos de base de datos
-│   │   ├── services/         #   🧠 Lógica de negocio
-│   │   │   ├── vision/       #     👁️ Computer Vision (YOLOv8)
-│   │   │   ├── fusion/       #     🧬 Fusión JDL 5 niveles
-│   │   │   ├── tactical/     #     ⚔️ COA engine, wargaming real
-│   │   │   ├── osint/        #     🌐 OSINT tools (Shodan, HIBP, DNS...)
-│   │   │   ├── terrain/      #     ⛰️ Elevación Open-Elevation
-│   │   │   ├── satellite/    #     🛰️ CelesTrak + detección
-│   │   │   └── prediction/   #     📈 Predicción de amenazas
-│   │   └── main.py           #   🚀 Punto de entrada
-│   ├── tests/                # 🧪 23 tests (y creciendo)
-│   └── requirements.txt      # 📦 Dependencias Python
-├── frontend/                 # 🌐 Web COP (Next.js + TypeScript + Zustand)
-│   └── src/
-│       ├── app/
-│       │   ├── login/        #   🔑 Pantalla de login
-│       │   └── maven/        #   🚀 COP Unificado tipo Palantir
-│       └── components/
-│           └── cop/          # 📦 Componentes del COP
-├── mobile/                   # 📱 App móvil (Flutter)
-│   └── sesis_cop/lib/
-│       ├── core/network/     # 🔐 API client + Mesh cifrado + Pinning
-│       ├── features/         # 📱 Pantallas (login, dashboard, intel, etc.)
-│       └── core/storage/     # 💾 Almacenamiento local cifrado
-├── ml/                       # 📊 Machine Learning (correlación, anomalías)
-├── guardian/                 # 🛡️ Guardian scripts (Python, Rust, Shell, Dart...)
-├── infra/                    # 🏗️ Infraestructura (nginx, grafana, prometheus)
-│   └── ssl/                  # 🔒 Certificados TLS para demo
-├── scripts/                  # 📜 Scripts de utilidad (demo, seed)
-├── docker-compose.yml        # 🐳 Orquestación Docker
-├── docker-compose.demo.yml   # 🐳 Override de demo
-└── .env.example              # ⚙️ Configuración de ejemplo
+│   │   ├── api/                   #   Rutas REST (Auth, Intel, OSINT, JDL Fusion, Vision, Tactical)
+│   │   ├── core/                  #   Seguridad, Criptografía (AES-GCM), Auditoría SHA-256, Config
+│   │   ├── db/models/             #   Esquemas SQLAlchemy y persistencia PostGIS
+│   │   └── services/              #   Motores de visión (YOLOv8), fusión JDL y analítica
+│   ├── tests/                     # 🧪 Batería de 35 pruebas automatizadas
+│   └── requirements.txt           #   Dependencias de Python
+├── frontend/                      # 🌐 Consola Web Common Operating Picture (Next.js / Vue 3)
+│   └── src/lib/                   #   Clientes API tipados, mappers y tipos Maven
+├── mobile/sesis_cop/              # 📱 Aplicación Táctica Móvil (Flutter)
+│   └── lib/features/              #   Pantallas (Login, Duress, COP, Misiones, Satélite)
+├── docs/                          # 📚 Documentación Técnica & Auditorías
+│   ├── AUDIT.md                   #   Auditoría técnica de base
+│   ├── ARCHITECTURE_CURRENT.md    #   Diagramas y arquitectura as-built
+│   ├── SECURITY_AUDIT.md          #   Modelo de amenazas STRIDE y resoluciones
+│   ├── FEATURE_MATRIX.md          #   Matriz honesta de capacidades
+│   ├── VALIDATION_PLAN.md         #   Plan de pruebas y escenarios
+│   └── FINAL_VALIDATION_REPORT.md #   Informe final de validación (27 secciones)
+├── reports/                       # 📊 Artefactos de validación (validation.json)
+├── scripts/                       # ⚙️ Scripts de automatización y validación (validate_all.py)
+├── docker-compose.yml             # 🐳 Orquestación de contenedores
+└── README.md                      # 📖 Manual principal del proyecto
 ```
 
 ---
 
-## ☎️ API (para desarrolladores)
+## ⚖️ Licencia & Citación
 
-### 🔐 Autenticación
+Este software se distribuye bajo los términos de la **Licencia MIT**.  
+Consulta el archivo [`LICENSE`](LICENSE) para más detalles.
 
-```bash
-# Obtener token
-curl -X POST https://localhost/api/v1/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username": "coronel.garcia", "password": "Demo2024!"}'
-
-# → {"access_token": "eyJ...", "refresh_token": "eyJ...", "token_type": "bearer"}
-
-# Usar token para llamadas autenticadas
-curl https://localhost/api/v1/alerts/ \
-  -H "Authorization: Bearer eyJ..."
+```bibtex
+@software{smartnationdefense2026,
+  author = {SESIS-FEDERATION Research Team},
+  title = {SmartNationDefense: A Reference Architecture for Multi-Sensor Fusion and Human-in-the-Loop C4ISR Systems},
+  year = {2026},
+  url = {https://github.com/murdok1982/SmartNationDefense}
+}
 ```
 
-### 🎯 Endpoints principales
-
-| Método | Ruta | ¿Qué hace? |
-|---|---|---|
-| `POST` | `/api/v1/auth/login` | Iniciar sesión |
-| `POST` | `/api/v1/auth/refresh` | Renovar token |
-| `POST` | `/api/v1/auth/logout` | Cerrar sesión |
-| `GET` | `/api/v1/health` | ¿Está vivo el sistema? |
-| `GET` | `/api/v1/alerts/` | Alertas activas |
-| `GET` | `/api/v1/intel/feed` | Feed de inteligencia |
-| `POST` | `/api/v1/messaging/send` | Enviar mensaje táctico |
-| `POST` | `/api/v3/vision/analyze-satellite` | 📸 Analizar imagen satélite |
-| `POST` | `/api/v3/vision/detect-changes` | 🆚 Detectar cambios entre fotos |
-| `POST` | `/api/v3/fusion/ingest-event` | 📡 Ingerir evento de sensor |
-| `GET` | `/api/v3/fusion/cop` | 🗺️ Obtener COP fusionado |
-| `POST` | `/api/v3/coa/generate` | 🎯 Generar cursos de acción |
-| `POST` | `/api/v3/coa/compare` | ⚖️ Comparar COAs |
-| `GET` | `/api/v3/coa/templates` | 📋 Ver plantillas ROAD |
-
-📖 Documentación completa interactiva: `https://localhost/docs`
+<div align="center">
 
 ---
 
-## 🛡️ Seguridad (esto es serio)
+<sub>Desarrollado con rigor técnico · Investigación aplicada en defensa y resiliencia tecnológica</sub>  
+<sub><i>"La superioridad en la información reside en la veracidad de los datos y el discernimiento humano."</i></sub>
 
-SmartNationDefense ha sido diseñado con **Zero Trust Architecture**:
-
-| Principio | Implementación |
-|---|---|
-| **Nunca confíes, siempre verifica** | Cada petición se autentica, cada token se valida |
-| **Mínimo privilegio** | Cada usuario ve solo lo que su clearance permite |
-| **Defensa en profundidad** | Auth + rate limit + SSRF protection + audit + cifrado |
-| **Datos en reposo cifrados** | PostgreSQL + cifrado de campo con Fernet |
-| **Datos en tránsito cifrados** | TLS 1.2+ exclusivo, HSTS, CSP estricto |
-| **No exponer secretos** | Contraseñas en .env (nunca en código), bcrypt |
-| **Anti-fuerza bruta** | 5 intentos/minuto por IP en login |
-| **Anti-SSRF** | Validación de IP destino anti-DNS rebinding |
-| **Logs inmutables** | Cadena de auditoría encadenada criptográficamente |
-
----
-
-## 📋 Licencia
-
-MIT © 2026 — Ver archivo [LICENSE](LICENSE) para más detalles.
-
----
-
-## 👨‍💻 ¿Preguntas?
-
-| Canal | Cómo llegar |
-|---|---|
-| **Issues** | Abre un issue en [GitHub](https://github.com/murdok1982/SmartNationDefense/issues) |
-| **Discusiones** | Usa la pestaña Discussions del repo |
-
----
-
-<h3 align="center">
-  <sub>Hecho en 🇪🇸 España · Con ❤️ para nuestras Fuerzas Armadas</sub>
-  <br><br>
-  <sub>
-  "La mejor defensa es conocer todo lo que pasa antes de que pase"
-  </sub>
-</h3>
-
-```ascii
-═══════════════════════════════════════════════════════════════════════════════════
-  SmartNationDefense v2.0 — C4ISR · Fusion · Vision · COA · COP
-═══════════════════════════════════════════════════════════════════════════════════
-```
+</div>
