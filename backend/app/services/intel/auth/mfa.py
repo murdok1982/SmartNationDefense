@@ -136,10 +136,13 @@ class TOTPService:
 
     def _key(self) -> bytes:
         if not self._encryption_key_hex:
-            raise RuntimeError(
-                "MFA_ENCRYPTION_KEY not configured — cannot encrypt MFA secrets. "
-                "Set MFA_ENCRYPTION_KEY in the environment (openssl rand -hex 32)."
-            )
+            if getattr(settings, "ENVIRONMENT", "development") == "production":
+                raise RuntimeError(
+                    "MFA_ENCRYPTION_KEY not configured — cannot encrypt MFA secrets in production. "
+                    "Set MFA_ENCRYPTION_KEY in the environment (openssl rand -hex 32)."
+                )
+            import hashlib
+            return hashlib.sha256((settings.SECRET_KEY + ":mfa-key-salt").encode("utf-8")).digest()
         try:
             key = bytes.fromhex(self._encryption_key_hex)
         except ValueError as exc:

@@ -49,6 +49,55 @@ def create_access_token(
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm="HS256")
 
 
+def create_mfa_challenge_token(
+    data: dict | str,
+    expires_delta: Optional[timedelta] = None,
+    **extra_claims: Any,
+) -> str:
+    """Issues a short-lived single-use MFA challenge ticket with explicit type 'mfa_challenge'."""
+    if isinstance(data, str):
+        to_encode: dict = {"sub": data}
+    else:
+        to_encode = data.copy()
+    to_encode.update(extra_claims)
+    ttl = expires_delta or timedelta(seconds=getattr(settings, "MFA_CHALLENGE_TTL_SECONDS", 300))
+    expire = datetime.now(timezone.utc) + ttl
+    to_encode.update({
+        "exp": expire,
+        "iat": datetime.now(timezone.utc),
+        "type": "mfa_challenge",
+        "jti": uuid.uuid4().hex,
+        "aud": settings.JWT_AUDIENCE,
+        "iss": settings.JWT_ISSUER,
+    })
+    secret = getattr(settings, "MFA_CHALLENGE_SECRET", "") or settings.SECRET_KEY
+    return jwt.encode(to_encode, secret, algorithm="HS256")
+
+
+def decode_mfa_token(token: str) -> dict:
+    """Decodes and validates an MFA challenge ticket. Strictly rejects any other token type."""
+    secret = getattr(settings, "MFA_CHALLENGE_SECRET", "") or settings.SECRET_KEY
+    try:
+        payload = jwt.decode(
+            token,
+            secret,
+            algorithms=["HS256"],
+            audience=settings.JWT_AUDIENCE,
+            issuer=settings.JWT_ISSUER,
+        )
+        if payload.get("type") != "mfa_challenge":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token type: expected mfa_challenge",
+            )
+        return payload
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="MFA challenge token invalido o expirado",
+        )
+
+
 def create_refresh_token(
     data: dict | str,
     **extra_claims: Any,
@@ -70,7 +119,7 @@ def create_refresh_token(
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm="HS256")
 
 
-def decode_token(token: str, is_refresh: bool = False) -> dict:
+def decode_token(token: str, is_refresh: bool = False, expected_type: Optional[str] = None) -> dict:
     try:
         payload = jwt.decode(
             token,
@@ -79,10 +128,12 @@ def decode_token(token: str, is_refresh: bool = False) -> dict:
             audience=settings.JWT_AUDIENCE,
             issuer=settings.JWT_ISSUER,
         )
-        if is_refresh and payload.get("type") != "refresh":
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token type")
-        if not is_refresh and payload.get("type") != "access":
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token type")
+        target_type = expected_type or ("refresh" if is_refresh else "access")
+        if payload.get("type") != target_type:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"Invalid token type: expected {target_type}, got {payload.get('type')}",
+            )
         return payload
     except JWTError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token invalido o expirado")

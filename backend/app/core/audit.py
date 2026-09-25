@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import asyncio
 import hashlib
 import json
 import logging
@@ -11,10 +12,16 @@ logger = logging.getLogger(__name__)
 
 
 class AuditChain:
-    """Immutable audit chain with SHA-256 hash chaining."""
+    """Tamper-evident audit chain with SHA-256 hash chaining and async concurrency locking.
+
+    Note: Cryptographic hash chaining provides tamper evidence, but does not equal
+    physical immutability unless combined with external WORM storage or append-only
+    remote log shipping.
+    """
 
     def __init__(self):
         self.last_hash: Optional[str] = None
+        self._lock = asyncio.Lock()
 
     async def record(
         self,
@@ -25,31 +32,56 @@ class AuditChain:
         details: Optional[Dict[str, Any]] = None,
         db_session=None,
     ) -> Dict[str, Any]:
-        entry = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "event": event,
-            "actor": actor,
-            "resource": resource,
-            "classification": classification,
-            "details": details or {},
-            "previous_hash": self.last_hash or "0000000000000000000000000000000000000000000000000000000000000000",
-        }
-        entry["hash"] = self._compute_hash(entry)
+        async with self._lock:
+            # Rehydrate last_hash from database if not yet initialized in this process
+            if self.last_hash is None and db_session is not None:
+                try:
+                    from sqlalchemy import select
+                    from app.db.models.persistence import AuditLog
+                    stmt = select(AuditLog).order_by(AuditLog.id.desc()).limit(1)
+                    res = await db_session.execute(stmt)
+                    last_row = res.scalars().first()
+                    if last_row and getattr(last_row, "row_hash", None):
+                        self.last_hash = last_row.row_hash
+                except Exception as e:
+                    logger.debug("Could not recover latest audit hash from DB: %s", e)
 
-        if self.last_hash and entry["previous_hash"] != self.last_hash:
-            logger.error(f"Audit chain integrity violation at {entry['timestamp']}")
-            raise ValueError("Audit chain integrity violated: previous hash mismatch")
+            entry = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "event": event,
+                "actor": actor,
+                "resource": resource,
+                "classification": classification,
+                "details": details or {},
+                "previous_hash": self.last_hash or "0" * 64,
+            }
+            entry["hash"] = self._compute_hash(entry)
 
-        self.last_hash = entry["hash"]
+            if self.last_hash and entry["previous_hash"] != self.last_hash:
+                logger.error(f"Audit chain integrity violation at {entry['timestamp']}")
+                raise ValueError("Audit chain integrity violated: previous hash mismatch")
 
-        if db_session:
-            from app.db.models.audit import AuditLog
-            log = AuditLog(**entry)
-            db_session.add(log)
-            await db_session.commit()
+            self.last_hash = entry["hash"]
 
-        logger.info(f"Audit: {event} by {actor} on {resource} [{classification}]")
-        return entry
+            if db_session:
+                try:
+                    from app.db.models.persistence import AuditLog
+                    log = AuditLog(
+                        actor=actor,
+                        action=event,
+                        resource_type=resource.split(":")[0] if ":" in resource else resource,
+                        resource_id=resource.split(":", 1)[1] if ":" in resource else "",
+                        context=details or {},
+                        prev_hash=entry["previous_hash"],
+                        row_hash=entry["hash"],
+                    )
+                    db_session.add(log)
+                    await db_session.commit()
+                except Exception as e:
+                    logger.error("Audit log DB persistence failed: %s", e)
+
+            logger.info(f"Audit: {event} by {actor} on {resource} [{classification}]")
+            return entry
 
     def _compute_hash(self, entry: Dict) -> str:
         raw = json.dumps(entry, sort_keys=True, ensure_ascii=False).encode()
@@ -58,7 +90,7 @@ class AuditChain:
     def verify_chain(self, entries: list) -> bool:
         prev = None
         for entry in entries:
-            expected_prev = prev or "0000000000000000000000000000000000000000000000000000000000000000"
+            expected_prev = prev or "0" * 64
             if entry["previous_hash"] != expected_prev:
                 return False
             computed = self._compute_hash(

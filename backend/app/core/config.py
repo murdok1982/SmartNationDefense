@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import json
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
 from typing import List, Optional, Dict, Any
 
@@ -9,10 +9,12 @@ class Settings(BaseSettings):
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "case_sensitive": False}
 
     ENVIRONMENT: str = Field(default="development", pattern="^(development|staging|production)$")
+    DEMO_MODE: bool = Field(default=False)
     DEBUG: bool = Field(default=False)
     LOG_LEVEL: str = Field(default="INFO", pattern="^(DEBUG|INFO|WARNING|ERROR)$")
 
     SECRET_KEY: str = Field(default="CHANGE_ME_IMMEDIATELY", min_length=32)
+    ADMIN_INITIAL_PASSWORD: str = Field(default="")
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=15, ge=1, le=60)
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = Field(default=7, ge=1, le=30)
     JWT_AUDIENCE: str = Field(default="sesis-c2")
@@ -71,23 +73,41 @@ class Settings(BaseSettings):
     @field_validator("SECRET_KEY")
     @classmethod
     def validate_secret_key(cls, v):
-        if v in ("change-this-to-a-random-64-char-string", "CHANGE_ME_IMMEDIATELY"):
-            raise ValueError("SECRET_KEY must be set via environment variable")
+        if v in ("change-this-to-a-random-64-char-string", "CHANGE_ME_IMMEDIATELY", "cambia-esto-por-una-cadena-aleatoria-de-64-caracteres-hex"):
+            return v
         return v
 
-    @field_validator("NEO4J_PASSWORD")
-    @classmethod
-    def validate_neo4j_password(cls, v, info):
-        if info.data.get("ENVIRONMENT") == "production" and not v:
-            raise ValueError("NEO4J_PASSWORD is required in production")
-        return v
-
-    @field_validator("GRAFANA_ADMIN_PASSWORD")
-    @classmethod
-    def validate_grafana_password(cls, v, info):
-        if info.data.get("ENVIRONMENT") == "production" and not v:
-            raise ValueError("GRAFANA_ADMIN_PASSWORD is required in production")
-        return v
+    @model_validator(mode="after")
+    def validate_production_hardening(self) -> "Settings":
+        if self.ENVIRONMENT == "production":
+            errors = []
+            if self.DEMO_MODE:
+                errors.append("DEMO_MODE cannot be enabled in production.")
+            if not self.SECRET_KEY or self.SECRET_KEY in (
+                "change-this-to-a-random-64-char-string",
+                "CHANGE_ME_IMMEDIATELY",
+                "cambia-esto-en-produccion",
+                "cambia-esto-por-una-cadena-aleatoria-de-64-caracteres-hex",
+                "admin123",
+                "Demo2024!",
+            ) or "change" in self.SECRET_KEY.lower():
+                errors.append("Insecure or default SECRET_KEY.")
+            if "sesis:sesis@" in self.DATABASE_URL or "change" in self.DATABASE_URL.lower():
+                errors.append("DATABASE_URL contains default or insecure credentials.")
+            if not self.NEO4J_PASSWORD or "change" in self.NEO4J_PASSWORD.lower():
+                errors.append("NEO4J_PASSWORD is required in production and cannot be default.")
+            if not self.GRAFANA_ADMIN_PASSWORD or "change" in self.GRAFANA_ADMIN_PASSWORD.lower():
+                errors.append("GRAFANA_ADMIN_PASSWORD is required in production and cannot be default.")
+            if not self.MFA_ENCRYPTION_KEY or len(self.MFA_ENCRYPTION_KEY) != 64:
+                errors.append("MFA_ENCRYPTION_KEY (64 hex characters) is required in production.")
+            if self.ADMIN_INITIAL_PASSWORD in ("admin123", "Demo2024!", "change-me-in-production"):
+                errors.append("Insecure ADMIN_INITIAL_PASSWORD.")
+            if errors:
+                raise ValueError(
+                    "Production configuration incomplete. Refusing to start:\n- "
+                    + "\n- ".join(errors)
+                )
+        return self
 
     EVIDENCE_STORAGE_PATH: str = Field(default="/tmp/sesis-evidence")
     REPORTS_STORAGE_PATH: str = Field(default="/tmp/sesis-reports")

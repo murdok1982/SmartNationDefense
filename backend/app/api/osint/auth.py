@@ -23,11 +23,14 @@ from app.core.config import settings
 from app.core.events import event_bus
 from app.core.security import (
     create_access_token,
+    create_mfa_challenge_token,
     create_refresh_token,
+    decode_mfa_token,
     decode_token,
     hash_password,
     verify_password,
 )
+from app.services.intel.auth.mfa import totp_service
 from app.db.models.osint.user import User
 
 router = APIRouter()
@@ -117,13 +120,27 @@ class _BruteForceProtector:
         self.MAX_ATTEMPTS = 5
         self.WINDOW = 300
 
-    def is_locked(self, username: str) -> bool:
+    async def is_locked(self, username: str) -> bool:
+        try:
+            from app.db.redis_pool import get_redis_pool
+            r = await get_redis_pool()
+            if await r.exists(f"lockout:{username}"):
+                return True
+        except Exception:
+            pass
         expiry = self._lockouts.get(username, 0)
-        if expiry and expiry > datetime.now(timezone.utc).timestamp():
-            return True
-        return False
+        return bool(expiry and expiry > datetime.now(timezone.utc).timestamp())
 
-    def get_remaining_attempts(self, username: str) -> int:
+    async def get_remaining_attempts(self, username: str) -> int:
+        try:
+            from app.db.redis_pool import get_redis_pool
+            r = await get_redis_pool()
+            val = await r.get(f"attempts:{username}")
+            if val:
+                val_int = int(val.decode() if isinstance(val, (bytes, bytearray)) else val)
+                return max(0, self.MAX_ATTEMPTS - val_int)
+        except Exception:
+            pass
         now = datetime.now(timezone.utc).timestamp()
         attempts = [
             t for _, t in self._failures.get(username, [])
@@ -131,8 +148,19 @@ class _BruteForceProtector:
         ]
         return max(0, self.MAX_ATTEMPTS - len(attempts))
 
-    def record_failure(self, username: str, ip: str) -> None:
+    async def record_failure(self, username: str, ip: str) -> None:
         now = datetime.now(timezone.utc).timestamp()
+        try:
+            from app.db.redis_pool import get_redis_pool
+            r = await get_redis_pool()
+            key = f"attempts:{username}"
+            cnt = await r.incr(key)
+            if cnt == 1:
+                await r.expire(key, self.WINDOW)
+            if cnt >= self.MAX_ATTEMPTS:
+                await r.setex(f"lockout:{username}", self.WINDOW, "1")
+        except Exception:
+            pass
         self._failures.setdefault(username, []).append((ip, now))
         self._failures[username] = [
             (ip, t) for _, t in self._failures[username]
@@ -141,7 +169,14 @@ class _BruteForceProtector:
         if len(self._failures[username]) >= self.MAX_ATTEMPTS:
             self._lockouts[username] = now + self.WINDOW
 
-    def record_success(self, username: str, ip: str) -> None:
+    async def record_success(self, username: str, ip: str) -> None:
+        try:
+            from app.db.redis_pool import get_redis_pool
+            r = await get_redis_pool()
+            await r.delete(f"attempts:{username}")
+            await r.delete(f"lockout:{username}")
+        except Exception:
+            pass
         self._failures.pop(username, None)
         self._lockouts.pop(username, None)
 
@@ -150,44 +185,58 @@ BruteForceProtector = _BruteForceProtector()
 
 
 # ---------------------------------------------------------------------------
-# MFA helpers (stubs — real TOTP logic lives in services.intel.auth)
+# MFA helpers (AES-256-GCM encrypted at rest & isolated challenge tokens)
 # ---------------------------------------------------------------------------
 
 
 def _issue_mfa_ticket(user_id: str, **kw: object) -> str:
-    payload = {
-        "sub": user_id,
-        "type": "mfa_challenge",
-        "exp": datetime.now(timezone.utc).timestamp() + 300,
-        "iat": datetime.now(timezone.utc).timestamp(),
-    }
-    return create_access_token(payload)
+    return create_mfa_challenge_token(user_id)
 
 
-def _verify_mfa_ticket(ticket: str) -> dict:
-    payload = decode_token(ticket)
-    if payload.get("type") != "mfa_challenge":
-        raise ValueError("Invalid ticket type")
+async def _verify_mfa_ticket(ticket: str) -> dict:
+    payload = decode_mfa_token(ticket)
+    jti = payload.get("jti")
+    if jti:
+        try:
+            from app.db.redis_pool import get_redis_pool
+            r = await get_redis_pool()
+            if await r.exists(f"used_mfa_ticket:{jti}"):
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="MFA ticket already used or expired",
+                )
+            exp = payload.get("exp", 0)
+            ttl = max(1, int(exp) - int(datetime.now(timezone.utc).timestamp()))
+            await r.setex(f"used_mfa_ticket:{jti}", ttl, "1")
+        except HTTPException:
+            raise
+        except Exception:
+            pass
     return payload
 
 
 def _generate_secret() -> str:
-    import pyotp
-    return pyotp.random_base32()
+    return totp_service.generate_secret()
 
 
 def _provisioning_uri(secret: str, account: str = "user") -> str:
-    import pyotp
-    return pyotp.totp.TOTP(secret).provisioning_uri(name=account, issuer_name="SESIS")
-
-
-def _verify_code(secret: str, code: str) -> bool:
-    import pyotp
-    return pyotp.TOTP(secret).verify(code)
+    return totp_service.provisioning_uri(account, secret)
 
 
 def _encrypt_secret(secret: str) -> str:
-    return secret
+    return totp_service.encrypt_secret(secret)
+
+
+def _decrypt_secret(secret_or_encrypted: str) -> str:
+    try:
+        return totp_service.decrypt_secret(secret_or_encrypted)
+    except Exception:
+        return secret_or_encrypted
+
+
+def _verify_code(secret_or_encrypted: str, code: str) -> bool:
+    plain = _decrypt_secret(secret_or_encrypted)
+    return totp_service.verify_code(plain, code)
 
 
 def _create_token_pair(
@@ -260,7 +309,7 @@ async def _issue_tokens_for(user: User, request: Request, db: AsyncSession, clie
     )
     await db.commit()
 
-    BruteForceProtector.record_success(user.username, client_ip)
+    await BruteForceProtector.record_success(user.username, client_ip)
 
     token_pair = _create_token_pair(
         user_id=user.id,
@@ -299,8 +348,8 @@ async def login(
 ) -> LoginResponse:
     client_ip = request.client.host if request.client else "unknown"
 
-    if BruteForceProtector.is_locked(body.username):
-        remaining = BruteForceProtector.get_remaining_attempts(body.username)
+    if await BruteForceProtector.is_locked(body.username):
+        remaining = await BruteForceProtector.get_remaining_attempts(body.username)
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=f"Account temporarily locked. Remaining attempts: {remaining}",
@@ -310,8 +359,8 @@ async def login(
     user = result.scalar_one_or_none()
 
     if not user or not verify_password(body.password, user.hashed_password):
-        BruteForceProtector.record_failure(body.username, client_ip)
-        remaining = BruteForceProtector.get_remaining_attempts(body.username)
+        await BruteForceProtector.record_failure(body.username, client_ip)
+        remaining = await BruteForceProtector.get_remaining_attempts(body.username)
 
         await _log_audit(
             user_id="unknown",
@@ -353,8 +402,10 @@ async def mfa_verify(
 ) -> LoginResponse:
     client_ip = request.client.host if request.client else "unknown"
     try:
-        payload = _verify_mfa_ticket(body.mfa_ticket)
-    except ValueError:
+        payload = await _verify_mfa_ticket(body.mfa_ticket)
+    except HTTPException:
+        raise
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired MFA ticket",
@@ -369,7 +420,7 @@ async def mfa_verify(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="MFA not enabled for user")
 
     if not _verify_code(user.mfa_secret, body.code):
-        BruteForceProtector.record_failure(user.username, client_ip)
+        await BruteForceProtector.record_failure(user.username, client_ip)
         await _log_audit(
             user_id=user.id,
             action="LOGIN",

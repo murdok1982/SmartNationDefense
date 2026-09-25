@@ -11,13 +11,19 @@ import httpx
 from app.services.osint.tools.base import ToolBase, ToolResult
 
 _BLOCKED_NETWORKS = [
+    ipaddress.ip_network("0.0.0.0/8"),
     ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("100.64.0.0/10"),  # CGNAT
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("169.254.0.0/16"), # Link-local / Cloud metadata
     ipaddress.ip_network("172.16.0.0/12"),
     ipaddress.ip_network("192.168.0.0/16"),
-    ipaddress.ip_network("127.0.0.0/8"),
-    ipaddress.ip_network("169.254.0.0/16"),
+    ipaddress.ip_network("198.18.0.0/15"),  # Benchmarking
+    ipaddress.ip_network("240.0.0.0/4"),   # Reserved
     ipaddress.ip_network("::1/128"),
-    ipaddress.ip_network("fc00::/7"),
+    ipaddress.ip_network("fc00::/7"),      # Unique Local
+    ipaddress.ip_network("fe80::/10"),     # Link-local IPv6
+    ipaddress.ip_network("::ffff:0:0/96"), # IPv4-mapped IPv6
 ]
 
 _BLOCKED_HOSTNAMES = {
@@ -25,6 +31,7 @@ _BLOCKED_HOSTNAMES = {
     "metadata.google.internal",
     "metadata.google",
     "169.254.169.254",
+    "instance-data",
 }
 
 _DEFAULT_HEADERS = {
@@ -34,6 +41,8 @@ _DEFAULT_HEADERS = {
 }
 
 def _is_blocked_ip(addr) -> bool:
+    if hasattr(addr, "ipv4_mapped") and addr.ipv4_mapped:
+        addr = addr.ipv4_mapped
     return (
         addr.is_private
         or addr.is_loopback
