@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import time
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -22,6 +23,7 @@ from app.api.osint.deps import (
 from app.core.audit import audit_chain
 from app.core.config import settings
 from app.core.events import event_bus
+from app.core.rate_limit import CircuitBreaker, get_limiter_key
 from app.core.security import (
     create_access_token,
     create_mfa_challenge_token,
@@ -120,52 +122,83 @@ class _BruteForceProtector:
     def __init__(self):
         self.MAX_ATTEMPTS = 5
         self.WINDOW = 300
+        self.circuit = CircuitBreaker()
 
-    async def is_locked(self, username: str) -> bool:
+    async def is_locked(self, username: str, path: str = "") -> bool:
+        key = get_limiter_key(username, path)
         try:
             from app.db.redis_pool import get_redis_pool
             r = await get_redis_pool()
-            if await r.exists(f"lockout:{username}"):
+            if r is not None:
+                self.circuit.redis = r
+                # TASK-013: circuit breaker — deniega mientras el circuito
+                # está OPEN (fail-open: se permite si Redis no está disponible).
+                if not await asyncio.to_thread(
+                    self.circuit.check, key, self.MAX_ATTEMPTS, self.WINDOW, self.MAX_ATTEMPTS
+                ):
+                    return True
+            if await r.exists(f"lockout:{key}"):
                 return True
-            if await r.zcard(f"bf_attempts:{username}") >= self.MAX_ATTEMPTS:
-                await r.setex(f"lockout:{username}", self.WINDOW * 2, "1")
+            if await r.zcard(f"bf_attempts:{key}") >= self.MAX_ATTEMPTS:
+                await r.setex(f"lockout:{key}", self.WINDOW * 2, "1")
                 return True
         except Exception:
             pass
         return False
 
-    async def get_remaining_attempts(self, username: str) -> int:
+    async def get_remaining_attempts(self, username: str, path: str = "") -> int:
+        key = get_limiter_key(username, path)
         try:
             from app.db.redis_pool import get_redis_pool
             r = await get_redis_pool()
-            cnt = await r.zcard(f"bf_attempts:{username}")
+            cnt = await r.zcard(f"bf_attempts:{key}")
             return max(0, self.MAX_ATTEMPTS - cnt)
         except Exception:
             return self.MAX_ATTEMPTS
 
-    async def record_failure(self, username: str, ip: str) -> None:
-        now = datetime.now(timezone.utc).timestamp()
+    async def record_failure(self, username: str, ip: str, path: str = "") -> None:
+        key = get_limiter_key(username, path)
+        r = None
         try:
             from app.db.redis_pool import get_redis_pool
             r = await get_redis_pool()
-            key = f"bf_attempts:{username}"
+            if r is not None:
+                self.circuit.redis = r
+            now = datetime.now(timezone.utc).timestamp()
             member = str(time.time_ns())
-            await r.zadd(key, {member: now})
-            await r.zremrangebyscore(key, "-inf", now - self.WINDOW)
-            cnt = await r.zcard(key)
+            attempts_key = f"bf_attempts:{key}"
+            await r.zadd(attempts_key, {member: now})
+            await r.zremrangebyscore(attempts_key, "-inf", now - self.WINDOW)
+            cnt = await r.zcard(attempts_key)
             if cnt >= self.MAX_ATTEMPTS:
-                await r.setex(f"lockout:{username}", self.WINDOW * 2, "1")
+                await r.setex(f"lockout:{key}", self.WINDOW * 2, "1")
         except Exception:
             pass
+        if r is not None:
+            try:
+                await asyncio.to_thread(
+                    self.circuit.report_failure, key, self.MAX_ATTEMPTS
+                )
+            except Exception:
+                pass
 
-    async def record_success(self, username: str, ip: str) -> None:
+    async def record_success(self, username: str, ip: str, path: str = "") -> None:
+        key = get_limiter_key(username, path)
+        r = None
         try:
             from app.db.redis_pool import get_redis_pool
             r = await get_redis_pool()
-            await r.delete(f"bf_attempts:{username}")
-            await r.delete(f"lockout:{username}")
+            if r is not None:
+                self.circuit.redis = r
+                await r.delete(f"bf_attempts:{key}")
+                await r.delete(f"lockout:{key}")
         except Exception:
             pass
+        if r is not None:
+            try:
+                await asyncio.to_thread(self.circuit.report_success, key)
+            except Exception:
+                pass
 
 
 BruteForceProtector = _BruteForceProtector()
@@ -315,7 +348,7 @@ async def _issue_tokens_for(user: User, request: Request, db: AsyncSession, clie
     )
     await db.commit()
 
-    await BruteForceProtector.record_success(user.username, client_ip)
+    await BruteForceProtector.record_success(user.username, client_ip, request.url.path)
 
     token_pair = _create_token_pair(
         user_id=user.id,
@@ -353,9 +386,10 @@ async def login(
     db: DBSession,
 ) -> LoginResponse:
     client_ip = request.client.host if request.client else "unknown"
+    path = request.url.path
 
-    if await BruteForceProtector.is_locked(body.username):
-        remaining = await BruteForceProtector.get_remaining_attempts(body.username)
+    if await BruteForceProtector.is_locked(body.username, path):
+        remaining = await BruteForceProtector.get_remaining_attempts(body.username, path)
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=f"Account temporarily locked. Remaining attempts: {remaining}",
@@ -365,8 +399,8 @@ async def login(
     user = result.scalar_one_or_none()
 
     if not user or not verify_password(body.password, user.hashed_password):
-        await BruteForceProtector.record_failure(body.username, client_ip)
-        remaining = await BruteForceProtector.get_remaining_attempts(body.username)
+        await BruteForceProtector.record_failure(body.username, client_ip, path)
+        remaining = await BruteForceProtector.get_remaining_attempts(body.username, path)
 
         await _log_audit(
             user_id="unknown",
@@ -426,7 +460,7 @@ async def mfa_verify(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="MFA not enabled for user")
 
     if not _verify_code(user.mfa_secret, body.code):
-        await BruteForceProtector.record_failure(user.username, client_ip)
+        await BruteForceProtector.record_failure(user.username, client_ip, request.url.path)
         await _log_audit(
             user_id=user.id,
             action="LOGIN",
