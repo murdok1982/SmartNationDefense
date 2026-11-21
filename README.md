@@ -18,7 +18,7 @@
 ### **SESIS-FEDERATION** — *Next-Gen Multi-Sensor Intelligence, C4ISR & Tactical Decision Support*
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-00f0ff.svg?style=for-the-badge&logo=opensourceinitiative&logoColor=white)](LICENSE)
-[![Validation: Verified](https://img.shields.io/badge/Validation-Verified_35%2F35_Tests-10b981.svg?style=for-the-badge&logo=checkmarx&logoColor=white)](reports/validation.json)
+[![Validation: Verified](https://img.shields.io/badge/Validation-Verified_161%2F161_Tests-10b981.svg?style=for-the-badge&logo=checkmarx&logoColor=white)](reports/validation.json)
 [![Security: Hardened](https://img.shields.io/badge/Security-AES--256--GCM_%2B_Argon2-6366f1.svg?style=for-the-badge&logo=securityscorecard&logoColor=white)](docs/SECURITY_AUDIT.md)
 [![Architecture: JDL Fusion](https://img.shields.io/badge/Architecture-JDL_Levels_0--4-f59e0b.svg?style=for-the-badge&logo=diagramsdotnet&logoColor=white)](docs/ARCHITECTURE_CURRENT.md)
 [![Status: Reference Implementation](https://img.shields.io/badge/Status-Reference_Prototype-ec4899.svg?style=for-the-badge&logo=apache&logoColor=white)](docs/FINAL_VALIDATION_REPORT.md)
@@ -110,7 +110,10 @@ El sistema ha superado una auditoría integral de código y seguridad, documenta
 ╠══════════════════════════════╦══════════════════════╦═════════════════════════════════╣
 ║ Métrica                      ║ Resultado            ║ Verificación                    ║
 ╠══════════════════════════════╬══════════════════════╬═════════════════════════════════╣
-║ Batería de Pruebas           ║ 35 PASSED / 0 FAILED ║ pytest 9.0 (E2E, Auth, SSRF)    ║
+║ Batería de Pruebas           ║ 161 PASSED / 0 FAILED║ pytest 8.3.4 (21 suites)        ║
+║ Cobertura suites seguridad   ║ 88% (pytest-cov)     ║ 6 módulos críticos              ║
+║ Móvil (Flutter 3.24.5)       ║ 0 issues / 11 tests  ║ analyze + flutter test          ║
+║ SCA (pip-audit / npm audit)  ║ 0 HIGH producción    ║ allowlist documentada           ║
 ║ Cifrado Secretos MFA         ║ AES-256-GCM          ║ Verificado en reposo            ║
 ║ Aislamiento Desafío MFA      ║ type="mfa_challenge" ║ Imposible bypass de endpoints   ║
 ║ Integridad de Auditoría      ║ SHA-256 Chain + Lock ║ Detección de manipulación       ║
@@ -271,6 +274,44 @@ cp .env.example .env
 docker compose -f docker-compose.yml up --build -d
 ```
 
+### 🔐 Variables de Entorno Obligatorias / Relevantes
+
+| Variable | Obligatoria | Descripción |
+|---|---|---|
+| `SECRET_KEY` | Sí (32+ chars) | Firma de JWT. Nunca reutilizar el placeholder de `.env.example`. |
+| `ADMIN_INITIAL_PASSWORD` | Sí | Password del admin inicial (≥10 chars, sin `change`). Compose falla si falta. |
+| `POSTGRES_PASSWORD` / `NEO4J_PASSWORD` | Sí | Credenciales de datos. |
+| `AES_KEY` | Sí (producción) | Clave Fernet para `EncryptedField`; sin ella el campo falla cerrado. |
+| `MFA_ENCRYPTION_KEY` | Sí (producción) | 64 hex chars (`openssl rand -hex 32`) para secretos TOTP. |
+| `FERNET_KEY_PATH` | No | Ruta de `fernet.key` (default `./fernet.key`). |
+| `SECURITY_FAIL_MODE` | No | `open`/`closed`; vacío deriva del entorno (dev=open, staging/prod=closed). |
+| `TRUSTED_PROXIES` | No | CIDRs autorizados a enviar `X-Real-IP`/`X-Forwarded-For`. |
+| `YOLO_MODEL_SHA256` | Sí en producción con visión | Hash sha256 del `.pt`; sin él no se carga el modelo. |
+| `METRICS_TOKEN` | No | Si se define, `/metrics` exige `X-Metrics-Token` o `Bearer`. |
+| `SLACK_WEBHOOK_URL` / `SLACK_PAGER_WEBHOOK_URL` | No | Alertmanager (FASE 6). |
+
+### 🧪 Comandos de Verificación (reproducibles)
+
+```bash
+# Backend: suite completa (161 tests)
+cd backend && SECRET_KEY="test-secret-key-32-chars-minimum!!!" python3 -m pytest tests -q
+
+# Cobertura de las suites de seguridad (objetivo ≥80%)
+cd backend && SECRET_KEY="..." python3 -m pytest tests -q \
+  --cov=app.core.security --cov=app.core.rate_limit --cov=app.core.audit \
+  --cov=app.services.osint.tools.web_tools --cov=app.services.intel.auth.mfa \
+  --cov=app.core.crypto_quantum --cov-report=term
+
+# Gate maestro (pytest + invariantes + reports/validation.json)
+SECRET_KEY="..." python3 scripts/validate_all.py
+
+# Frontend (Node 20+)
+cd frontend && npm ci && npx tsc --noEmit && npm run build
+
+# Móvil (Flutter 3.24+)
+cd mobile/sesis_cop && flutter analyze && flutter test
+```
+
 ### 🧪 Ejecución de Validación Automatizada
 
 Para ejecutar la verificación completa de seguridad, pruebas unitarias e invariantes criptográficas:
@@ -283,7 +324,7 @@ python scripts/validate_all.py
 Salida esperada:
 ```
 [1/3] Running pytest suite...
-============================= 35 passed in 7.5s ==============================
+============================= 161 passed in ~16s ==============================
 
 [2/3] Auditing critical security invariants in codebase...
 [PASS] MFA secrets encrypted with AES-256-GCM.
