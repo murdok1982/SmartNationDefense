@@ -125,7 +125,7 @@
   - **Verification:** `pytest backend/tests/test_rate_limit.py`
   - **Retries:** `0/3`
 
-- [ ] **TASK-014:** TD-008 — settings.MULTI_TENANT/DEFAULT_TENANT_ID defaults (config.py).
+- [x] **TASK-014:** TD-008 — settings.MULTI_TENANT/DEFAULT_TENANT_ID defaults (config.py). (VERIFICADO: `MULTI_TENANT: bool = False` + `DEFAULT_TENANT_ID: str = "default"` en config.py; snippet real `TASK-014 OK False default` con SECRET_KEY de test; osint/deps.py L211 ya consumía ambos settings)
   - **Owner:** `@builder` -> `@qa-verifier`
   - **Depends On:** `NONE`
   - **Spec Ref:** SPEC.md §3 (AC-12)
@@ -197,7 +197,7 @@
   - **Verification:** `curl -s http://localhost:80/healthz | grep OK` (FASE 2)
   - **Retries:** `0/3`
 
-- [ ] **TASK-023:** FASE 2 verification — Todos AC de FASE 2 (2-22): mover `- [x]` + marcar feedback.
+- [x] **TASK-023:** FASE 2 verification — Todos AC de FASE 2 (2-22): mover `- [x]` + marcar feedback. (VERIFICADO REAL: AC-08 `User.__tablename__ == users` y 1 sola declaración `__tablename__ = "users"`; AC-09 test_clearance_enforcement 5 passed; AC-10 fail-closed L42/L54; AC-11 get_limiter_key L132 + test_rate_limit 2 passed; AC-12 `grep -c X-XSS infra/nginx.conf` = 0; AC-13 migrations/archived = 002_intel_products.sql.legacy + schema_design.sql.legacy; AC-14 infra/ssl/server.crt CN=localhost notAfter 2036; AC-15 fernet.key 44 bytes; AC-16 `location = /healthz` L37; AC-17 scripts/archived/guardian 6 entradas. SPEC.md AC-08..AC-17 marcados [x].)
   - **Owner:** `@qa-verifier`
   - **Depends On:** `TASK-022`
   - **Spec Ref:** SPEC.md §3 (AC-08..AC-16)
@@ -269,7 +269,7 @@
 
 ## PHASE 4: FASE 4 — Data Migration & Modernization (PENDING)
 
-- [ ] **TASK-031:** TD-012 Follow-up — User nuevo exportado: `app/db/models/__init__.py` + poner `from app.db.models.persistence import User` (unify real).
+- [x] **TASK-031:** TD-012 Follow-up — User nuevo exportado: `app/db/models/__init__.py` + poner `from app.db.models.persistence import User` (unify real). (VERIFICADO: `from app.db.models import User` → tablename `users`; `__all__ = ["User", "IntelUserSchema", "OsistUserSchema"]`)
   - **Owner:** `@builder` -> `@qa-verifier`
   - **Depends On:** `TASK-008`
   - **Spec Ref:** SPEC.md §3 (AC-08)

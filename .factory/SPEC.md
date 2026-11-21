@@ -55,17 +55,17 @@
 
 ### Feature F-02 — FASE 2 (Backend Hardening, PENDING — see TASKS.md)
 - **REQ-03:** Consolidación de User (TD-001 + ADR-003): Unified User model + IntelUserSchema + OsintUserSchema (como mixins/interfaces).
-  - [ ] **AC-08:** User unificado exportado desde `app/db/models/persistence.py` + `app/db/models/__init__.py` no colisiona. *(Verified FASE 2)*
-  - [ ] **AC-09:** Routers v1 clearance-enforced (N-01 + SEC-TEST-CLEARANCE-01..08 passing). *(Verified FASE 2)*
-  - [ ] **AC-10:** EncryptedField fail-closed (TD-006). *(Verified FASE 2)*
-  - [ ] **AC-11:** Rate-limit path-blindness fixed (TD-009, N-06). *(Verified FASE 2)*
-  - [ ] **AC-12:** X-XSS-Protection fix (TD-019 + N-09). *(Verified FASE 2)*
-  - [ ] **AC-13:** Legacy `backend/migrations/*.legacy` archived (TD-012). *(Verified FASE 2)*
+  - [x] **AC-08:** User unificado exportado desde `app/db/models/persistence.py` + `app/db/models/__init__.py` no colisiona. *(Verified FASE 2)*
+  - [x] **AC-09:** Routers v1 clearance-enforced (N-01 + SEC-TEST-CLEARANCE-01..08 passing). *(Verified FASE 2)*
+  - [x] **AC-10:** EncryptedField fail-closed (TD-006). *(Verified FASE 2)*
+  - [x] **AC-11:** Rate-limit path-blindness fixed (TD-009, N-06). *(Verified FASE 2)*
+  - [x] **AC-12:** X-XSS-Protection fix (TD-019 + N-09). *(Verified FASE 2)*
+  - [x] **AC-13:** Legacy `backend/migrations/*.legacy` archived (TD-012). *(Verified FASE 2)*
 - **REQ-04:** FASE 2 infra hardening (N-07, TD-007, TD-020): infra/ssl + fernet.key + healthzestatic.
-  - [ ] **AC-14:** infra/ssl/ configurado para nginx (dev certs self-signed, .gitignore-d). *(Verified FASE 2)*
-  - [ ] **AC-15:** fernet.key generado + documentado. *(Verified FASE 2)*
-  - [ ] **AC-16:** Healthcheck estático en nginx (TD-020). *(Verified FASE 2)*
-  - [ ] **AC-17:** Guardian scripts quarantined (TD-013). *(Verified FASE 2)*
+  - [x] **AC-14:** infra/ssl/ configurado para nginx (dev certs self-signed, .gitignore-d). *(Verified FASE 2)*
+  - [x] **AC-15:** fernet.key generado + documentado. *(Verified FASE 2)*
+  - [x] **AC-16:** Healthcheck estático en nginx (TD-020). *(Verified FASE 2)*
+  - [x] **AC-17:** Guardian scripts quarantined (TD-013). *(Verified FASE 2)*
 
 ### Feature F-03 — FASE 3 (Security, PENDING — see TASKS.md)
 - **REQ-05:** HIGH-02 remediación real: ADMIN_INITIAL_PASSWORD en develop/staging con advertencias (necesario FASE 3+); POSTGRES_PASSWORD rotado; validación de startup real.

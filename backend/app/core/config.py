@@ -48,6 +48,11 @@ class Settings(BaseSettings):
 
     CORS_ORIGINS: str = Field(default="http://localhost:3000,http://localhost:8501")
 
+    # Multi-tenancy: desactivado por defecto (single-tenant). El esquema de
+    # aislamiento por tenant se activa explícitamente en despliegues dedicados.
+    MULTI_TENANT: bool = Field(default=False)
+    DEFAULT_TENANT_ID: str = Field(default="default")
+
     RATE_LIMIT_DEFAULT: int = Field(default=60, ge=1)
 
     GRAFANA_ADMIN_USER: str = Field(default="admin")
