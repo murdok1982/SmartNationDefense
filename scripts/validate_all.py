@@ -40,17 +40,18 @@ def run_pytest_suite() -> tuple[int, int, bool]:
     if result.stderr:
         print(result.stderr, file=sys.stderr)
 
+    import re
+
     passed = 0
     failed = 0
     for line in result.stdout.splitlines():
-        if "passed" in line and ("=" in line or "in" in line):
-            # parse line like: "=== 35 passed in 8.26s ==="
-            parts = line.replace("=", "").strip().split()
-            for i, p in enumerate(parts):
-                if p == "passed" and i > 0 and parts[i - 1].isdigit():
-                    passed = int(parts[i - 1])
-                elif p == "failed" and i > 0 and parts[i - 1].isdigit():
-                    failed = int(parts[i - 1])
+        # parsear summary real del pytest: "=== 40 passed, 284 warnings in 6.02s ==="
+        m = re.search(r"(\d+)\s+passed", line)
+        if m:
+            passed = int(m.group(1))
+        m = re.search(r"(\d+)\s+failed", line)
+        if m:
+            failed = int(m.group(1))
 
     success = result.returncode == 0
     return passed, failed, success
