@@ -93,7 +93,7 @@
   - **Verification:** `pytest backend/tests/test_clearance_enforcement.py`
   - **Retries:** `0/3`
 
-- [ ] **TASK-010:** TD-006 — EncryptedField fail-closed (persistence.py, telemetry, messaging).
+- [x] **TASK-010:** TD-006 — EncryptedField fail-closed (persistence.py, telemetry, messaging). (VERIFICADO: `raise ValueError(...AES_KEY no configurado...fail-closed...)` en L42 (__get__) y L54 (__set__); cipher None → GET ValueError + SET ValueError; roundtrip AES_KEY-set OK; pytest **35 passed**; usages: Alert.sensitive @L118 etc., 0 refs en tests)
   - **Owner:** `@builder` -> `@qa-verifier`
   - **Depends On:** `NONE`
   - **Spec Ref:** SPEC.md §3 (AC-10)

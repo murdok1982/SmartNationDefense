@@ -37,23 +37,23 @@ class EncryptedField:
             return {}
         cache_key = self._make_cache_key(obj, encrypted)
         if cache_key not in self._cache:
+            cipher = _get_cipher()
+            if cipher is None:
+                raise ValueError("AES_KEY no configurado: EncryptedField refuse a devolver datos en texto plano — fail-closed")
             try:
-                cipher = _get_cipher()
-                if cipher:
-                    self._cache[cache_key] = cipher.decrypt(encrypted)
-                else:
-                    return {}
+                self._cache[cache_key] = cipher.decrypt(encrypted)
             except Exception:
-                return {}
+                raise
         return self._cache[cache_key]
 
     def __set__(self, obj, value: dict):
         if not isinstance(value, dict):
             raise ValueError("EncryptedField solo acepta dict/JSON")
         cipher = _get_cipher()
-        if cipher:
-            encrypted = cipher.encrypt(value)
-            setattr(obj, self.column_name, encrypted)
+        if cipher is None:
+            raise ValueError("AES_KEY no configurado: EncryptedField refuse a escribir — fail-closed")
+        encrypted = cipher.encrypt(value)
+        setattr(obj, self.column_name, encrypted)
         cache_key = self._make_cache_key(obj, getattr(obj, self.column_name, ""))
         if cache_key in self._cache:
             del self._cache[cache_key]
