@@ -41,3 +41,4 @@ torch==2.5.1
 # Testing
 pytest==8.3.4
 pytest-asyncio==0.25.0
+aiosqlite==0.21.0  # sqlite+aiosqlite usado por backend/tests/conftest.py — sin esto pytest falla en CI
