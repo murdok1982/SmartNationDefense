@@ -18,10 +18,10 @@
 ### **SESIS-FEDERATION** — *Next-Gen Multi-Sensor Intelligence, C4ISR & Tactical Decision Support*
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-00f0ff.svg?style=for-the-badge&logo=opensourceinitiative&logoColor=white)](LICENSE)
-[![Validation: Verified](https://img.shields.io/badge/Validation-Verified_161%2F161_Tests-10b981.svg?style=for-the-badge&logo=checkmarx&logoColor=white)](reports/validation.json)
-[![Security: Hardened](https://img.shields.io/badge/Security-AES--256--GCM_%2B_Argon2-6366f1.svg?style=for-the-badge&logo=securityscorecard&logoColor=white)](docs/SECURITY_AUDIT.md)
+[![Validation: 169 backend + 11 mobile](https://img.shields.io/badge/Tests-169_backend_%2B_11_mobile-10b981.svg?style=for-the-badge&logo=checkmarx&logoColor=white)](reports/validation.json)
+[![Security: not production ready](https://img.shields.io/badge/Security-Not_Production_Ready-dc2626.svg?style=for-the-badge&logo=securityscorecard&logoColor=white)](.factory/SECURITY_AUDIT.md)
 [![Architecture: JDL Fusion](https://img.shields.io/badge/Architecture-JDL_Levels_0--4-f59e0b.svg?style=for-the-badge&logo=diagramsdotnet&logoColor=white)](docs/ARCHITECTURE_CURRENT.md)
-[![Status: Reference Implementation](https://img.shields.io/badge/Status-Reference_Prototype-ec4899.svg?style=for-the-badge&logo=apache&logoColor=white)](docs/FINAL_VALIDATION_REPORT.md)
+[![Status: Reference Prototype](https://img.shields.io/badge/Status-Reference_Prototype_%2F_No_Production-ec4899.svg?style=for-the-badge&logo=apache&logoColor=white)](docs/FINAL_VALIDATION_REPORT.md)
 
 <p align="center">
   <b>Ingesta Multisensor</b> • <b>Fusión JDL (L0–L4)</b> • <b>Computer Vision & Satélite</b> • <b>OSINT Defensivo</b> • <b>Common Operating Picture (COP)</b>
@@ -38,6 +38,18 @@
 > **SmartNationDefense** es un **prototipo de ingeniería de software, arquitectura de referencia e investigación tecnológica**.
 > **NO ES UN SISTEMA DE COMBATE MILITAR EN PRODUCCIÓN ("Military-Grade Production")**.
 > Todas las recomendaciones generadas por IA/LLM, simulaciones de wargaming y cursos de acción (COA) tienen carácter **ESTRICTAMENTE NO OPERATIVO / ASISTENCIA A LA DECISIÓN** y requieren **AUTORIZACIÓN HUMANA OBLIGATORIA (Human-in-the-Loop)** antes de cualquier ejecución en el mundo real.
+
+> [!WARNING]
+> **Estado de madurez: NO APROBADO PARA PRODUCCIÓN**
+> El informe de validación ([`docs/FINAL_VALIDATION_REPORT.md`](docs/FINAL_VALIDATION_REPORT.md)) emite un veredicto global de **“NO APROBADO PARA PRODUCCIÓN”**. El gate de seguridad sí cerró **0 CRITICAL / 0 HIGH**, pero la validación es **parcial** y quedan bloqueos declarados:
+>
+> 1. **Docker no pudo ejecutarse** en el entorno de validación: la infraestructura (PostgreSQL/PostGIS, Redis, NATS, Neo4j, Nginx, Grafana/Alertmanager) está validada de forma **estática**, no en runtime real.
+> 2. **Quedan dos cuestiones de seguridad abiertas** (MEDIUM, tareas `SEC-FIX-007` y `SEC-FIX-008`):
+>    - **SEC-FIX-007 — hardening perimetral:** `/metrics` y `/docs` públicos si `METRICS_TOKEN` está vacío, Redis/NATS sin autenticación en el compose por defecto y cabeceras del frontend.
+>    - **SEC-FIX-008 — integridad de auditoría y cobertura de rutas:** cabeza única de la cadena en DB bajo concurrencia y decisión explícita sobre los módulos OSINT no montados.
+>    - Además, el MEDIUM más urgente es **VULN-035: el flujo MFA no se exige en las rutas vivas** (se implementa a nivel de librería/modelo, pero el login activo no lo demanda).
+>
+> **Uso previsto:** laboratorio, formación, evaluación técnica, investigación y referencia arquitectónica. **No desplegar en infraestructura crítica real** hasta cerrar los bloqueos anteriores y ejecutar la validación con Docker.
 
 ---
 
@@ -70,9 +82,9 @@
 
 <div align="center">
 
-| 🛰️ **Fusión Multisensor** | 👁️ **Visión Táctica** | 🛡️ **Ciberseguridad Hardened** | 📱 **Cliente de Campo** |
+| 🛰️ **Fusión Multisensor** | 👁️ **Visión Táctica** | 🛡️ **Ciberseguridad Endurecida** | 📱 **Cliente de Campo** |
 |:---:|:---:|:---:|:---:|
-| Pipeline JDL L0–L4 correlacionando radar, AIS, satélite y OSINT | Inferencia YOLOv8, cálculo NDVI multiespectral y detección de cambios | Cifrado AES-256-GCM, tokens MFA aislados, defensa anti-SSRF total | Flutter táctico offline-first, Duress PIN y sincronización resiliente |
+| Pipeline JDL L0–L4 correlacionando radar, AIS, satélite y OSINT | Inferencia YOLOv8, cálculo NDVI multiespectral y detección de cambios | AES-256-GCM, tickets MFA aislados y SSRF con IP pinning (0 CRITICAL/HIGH; MEDIUM residuales) | Flutter táctico offline-first, Duress PIN y sincronización resiliente |
 
 </div>
 
@@ -125,9 +137,25 @@ flowchart LR
 
 ---
 
+## 🌍 Casos de Uso Civiles
+
+El mismo núcleo de fusión, análisis y coordinación puede aplicarse a misión civil. Los siguientes escenarios son **referencias de diseño y evaluación**, no despliegues reales:
+
+| Caso de uso | Qué aporta la plataforma | Capacidades implicadas |
+|---|---|---|
+| **🏭 Protección de infraestructuras críticas** | Vigilancia perimetral y correlación de sensores (radar, satélite, dron, OSINT) para detectar aproximaciones, cambios de terreno u obras no autorizadas en plantas, puertos, presas y subestaciones. | Fusión JDL L0–L3, visión YOLOv8 + NDVI, alertas y auditoría hash-chain. |
+| **🚢 Conocimiento de la situación marítima (MDA)** | Correlación de trazas AIS/radar con detecciones ópticas para identificar buques sin transpondedor, patrones anómalos o incidentes en aguas de responsabilidad. | Ingesta AIS, asociación espacio-temporal, detección de formaciones navales, mapas tácticos. |
+| **📡 Resiliencia de comunicaciones** | Operación degradada: cola offline en el terminal móvil, reintentos y *dead-letter queue* en NATS, y sincronización al recuperar enlace para que la coordinación no se detenga. | Flutter offline-first, `offline_queue`, NATS DLQ + idempotencia, healthchecks. |
+| **🔎 Análisis de información** | Triaje y enriquecimiento de fuentes abiertas (OSINT), extracción documental, grafos de entidades y generación de informes trazables para analistas humanos. | OSINT defensivo, extracción de documentos, grafo de entidades, audit chain. |
+| **🚨 Coordinación ante emergencias** | COP compartido con estado de unidades, amenazas y recursos; reportes y *After Action Review* para que distintos organismos trabajen sobre la misma situación. | COP web, mensajería, reportes/AAR, roles y clearance, panel de observabilidad. |
+
+> **Límite honesto:** estas capacidades están implementadas o integradas en distinto grado (ver [`docs/FEATURE_MATRIX.md`](docs/FEATURE_MATRIX.md)); varias dependen de servicios externos y del despliegue completo que aún no se ha validado en runtime (Docker). No sustituyen procedimientos oficiales de emergencia ni decisiones humanas.
+
+---
+
 ## 🔬 Estado de Validación & Auditoría Técnica
 
-El sistema ha superado una auditoría integral de código y seguridad, documentada en [`docs/FINAL_VALIDATION_REPORT.md`](docs/FINAL_VALIDATION_REPORT.md).
+El proyecto ha sido auditado de forma integral; el informe de validación ([`docs/FINAL_VALIDATION_REPORT.md`](docs/FINAL_VALIDATION_REPORT.md)) concluye **NO APROBADO PARA PRODUCCIÓN** por validación parcial (Docker no ejecutado y dos cuestiones de seguridad abiertas). Cifras de la **última ejecución reproducible**: **169 pruebas backend** (157 documentadas en el informe FASE 9 + 12 regresiones de seguridad añadidas en el cierre) y **11 pruebas móviles**.
 
 ```
 ╔═══════════════════════════════════════════════════════════════════════════════════════╗
@@ -135,18 +163,22 @@ El sistema ha superado una auditoría integral de código y seguridad, documenta
 ╠══════════════════════════════╦══════════════════════╦═════════════════════════════════╣
 ║ Métrica                      ║ Resultado            ║ Verificación                    ║
 ╠══════════════════════════════╬══════════════════════╬═════════════════════════════════╣
-║ Batería de Pruebas           ║ 161 PASSED / 0 FAILED║ pytest 8.3.4 (21 suites)        ║
+║ Tests backend                ║ 169 PASSED / 0 FAILED║ pytest 8.3.4 · 23 suites        ║
+║ Tests móviles                ║ 11 PASSED / 0 FAILED ║ flutter test (3.24.5)           ║
 ║ Cobertura suites seguridad   ║ 88% (pytest-cov)     ║ 6 módulos críticos              ║
-║ Móvil (Flutter 3.24.5)       ║ 0 issues / 11 tests  ║ analyze + flutter test          ║
+║ Móvil (Flutter 3.24.5)       ║ 0 issues             ║ flutter analyze                 ║
 ║ SCA (pip-audit / npm audit)  ║ 0 HIGH producción    ║ allowlist documentada           ║
 ║ Cifrado Secretos MFA         ║ AES-256-GCM          ║ Verificado en reposo            ║
 ║ Aislamiento Desafío MFA      ║ type="mfa_challenge" ║ Imposible bypass de endpoints   ║
 ║ Integridad de Auditoría      ║ SHA-256 Chain + Lock ║ Detección de manipulación       ║
 ║ Mitigación SSRF              ║ RFC Denylist Estricto║ 0.0.0.0/8, CGNAT, Metadata, IP6 ║
-║ Control de Acceso            ║ ABAC (5 Niveles)     ║ OPEN → TOP_SECRET leak-proof    ║
-║ Estado Global                ║ VALIDATED PROTOTYPE  ║ Referencia técnica verificada   ║
+║ Control de Acceso            ║ ABAC (5 Niveles)     ║ 141 rutas v1+v3 sin gaps        ║
+║ Infra Docker                 ║ NO EJECUTADO         ║ Sin Docker en el entorno        ║
+║ Estado Global                ║ NO APTO PRODUCCIÓN   ║ Prototipo de referencia         ║
 ╚══════════════════════════════╩══════════════════════╩═════════════════════════════════╝
 ```
+
+> **Nota sobre las cifras:** el informe FASE 9 documenta **157 tests backend**; después se añadieron **12 pruebas de regresión de seguridad** (Host/IP, identity bucket, métricas, YOLO, lockout), por lo que la suite actual es **169**. Ambas cifras son reales y se refieren a momentos distintos del cierre.
 
 ---
 
@@ -218,7 +250,7 @@ graph TD
 
 ### 🛡️ 3. Ciberseguridad & Control de Acceso (ABAC)
 * **Jerarquía de Clasificación:** Estricta separación entre `OPEN`, `RESTRICTED`, `CONFIDENTIAL`, `SECRET` y `TOP_SECRET`.
-* **MFA de Grado Criptográfico:** Secretos TOTP RFC 6238 cifrados mediante **AES-256-GCM** en base de datos.
+* **MFA TOTP (implementado, no exigido aún en rutas vivas):** secretos RFC 6238 cifrados con **AES-256-GCM** en base de datos. El flujo de desafío/verificación existe a nivel de librería, pero **el login activo todavía no lo demanda** (VULN-035, MEDIUM abierto; ver aviso de madurez).
 * **Tokens Aislados:** Tickets de autenticación en dos fases tipados (`mfa_challenge`) imposibles de utilizar como Bearer tokens.
 * **Trazabilidad Inmutable:** Cada mutación del estado genera un bloque hash encadenado $\text{SHA-256}(H_{n-1} \,\|\, T_n \,\|\, U_n \,\|\, A_n \,\|\, D_n)$ protegido contra concurrencia.
 
@@ -318,7 +350,7 @@ docker compose -f docker-compose.yml up --build -d
 ### 🧪 Comandos de Verificación (reproducibles)
 
 ```bash
-# Backend: suite completa (161 tests)
+# Backend: suite completa (169 tests)
 cd backend && SECRET_KEY="test-secret-key-32-chars-minimum!!!" python3 -m pytest tests -q
 
 # Cobertura de las suites de seguridad (objetivo ≥80%)
@@ -349,7 +381,7 @@ python scripts/validate_all.py
 Salida esperada:
 ```
 [1/3] Running pytest suite...
-============================= 161 passed in ~16s ==============================
+============================= 169 passed in ~16s ==============================
 
 [2/3] Auditing critical security invariants in codebase...
 [PASS] MFA secrets encrypted with AES-256-GCM.
@@ -386,9 +418,9 @@ SmartNationDefense/
 │   │   ├── core/                  #   Seguridad, Criptografía (AES-GCM), Auditoría SHA-256, Config
 │   │   ├── db/models/             #   Esquemas SQLAlchemy y persistencia PostGIS
 │   │   └── services/              #   Motores de visión (YOLOv8), fusión JDL y analítica
-│   ├── tests/                     # 🧪 Batería de 35 pruebas automatizadas
+│   ├── tests/                     # 🧪 169 pruebas backend (+11 móviles en mobile/sesis_cop/test)
 │   └── requirements.txt           #   Dependencias de Python
-├── frontend/                      # 🌐 Consola Web Common Operating Picture (Next.js / Vue 3)
+├── frontend/                      # 🌐 Consola Web Common Operating Picture (Next.js 16 / React 19)
 │   └── src/lib/                   #   Clientes API tipados, mappers y tipos Maven
 ├── mobile/sesis_cop/              # 📱 Aplicación Táctica Móvil (Flutter)
 │   └── lib/features/              #   Pantallas (Login, Duress, COP, Misiones, Satélite)
