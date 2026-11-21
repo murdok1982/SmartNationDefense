@@ -1,8 +1,8 @@
 # AUTONOMOUS EXECUTION BACKLOG
 
 - **Project Name:** SmartNationDefense / SESIS-FEDERATION
-- **Current Phase:** `PHASE_9` (fases 0-6 y 8 verificadas; pendientes: 029/030 FASE 3 audit, 042 móvil, 045/046 docs)
-- **Progress:** `41 / 46 tasks verified (89%)`
+- **Current Phase:** `PHASE_3` — **SECURITY GATE BLOCKED** (4 HIGH abiertos: VULN-006/007/008/009). Auditoría TASK-029 entregada; TASK-030 pendiente de cerrar `SEC-FIX-001/004/005/006`.
+- **Progress:** `42 / 46 tasks verified (91%)` — ⚠️ **no autoriza release**: `.factory/SECURITY_AUDIT.md` §5 = `BLOCKED`
 - **State Legend:**
   - `- [ ]` Pending (Listo para ejecutar)
   - `- [~]` In Progress (Asignado a subagente activo)
@@ -249,12 +249,12 @@
   - **Verification:** `grep -n "dlq\|idempotency\|ack" backend/app/core/events.py | wc -l`
   - **Retries:** `0/3`
 
-- [ ] **TASK-029:** SEC-FIX-XXX (FASE 3) — Audit chain (TASK-027 done, verificar persistence), SSRF (TASK-025), HIGH-02 (TASK-024). Re-run `redteam-auditor` → 0 CRITICAL/HIGH.
+- [x] **TASK-029:** SEC-FIX-XXX (FASE 3) — Re-auditoría adversarial completa FASE 3 → `.factory/SECURITY_AUDIT.md` reescrito con evidencia ejecutable. **ENTREGADO con veredicto `BLOCKED`**: 0 CRITICAL abiertos, 3 HIGH corregidos (VULN-003 credenciales públicas, VULN-004 SSRF OSINT, VULN-005 SSRF visión) y **4 HIGH abiertos** (VULN-006 brute-force vivo, VULN-007 fail-open Redis, VULN-008 rate-limit global tras proxy, VULN-009 dependencias) → encoladas `SEC-FIX-001/004/005/006` en la DYNAMIC SECURITY & QA REMEDIATION QUEUE. El criterio "0 CRITICAL/HIGH" de esta tarea **NO se cumple todavía** (por eso TASK-030 sigue pendiente).
   - **Owner:** `@redteam-auditor` -> `@qa-verifier`
   - **Depends On:** `TASK-024, TASK-025, TASK-026, TASK-027`
   - **Spec Ref:** SPEC.md §3 (AC-18..AC-21)
-  - **Target Files:** `.factory/SECURITY_AUDIT.md`
-  - **Verification:** `python scripts/validate_all.py` exit 0 + `cat .factory/SECURITY_AUDIT.md`
+  - **Target Files:** `.factory/SECURITY_AUDIT.md`, `backend/tests/test_vision_ssrf.py` (nuevo), `backend/app/services/vision/analyst.py`, `backend/app/api/v3/router.py`, `backend/app/core/config.py`, `.env.example`, `docker-compose.yml`, `docker-compose.demo.yml`
+  - **Verification:** `cd backend && SECRET_KEY="test-secret-key-32-chars-minimum!!!" python3 -m pytest tests -q` → **74 passed**; `SECRET_KEY=… python3 ../scripts/validate_all.py` → **VALIDATED**; `grep -n admin123 docker-compose*.yml .env.example` → **0**; `pytest tests/test_vision_ssrf.py` → **10 passed**
   - **Retries:** `0/3`
 
 - [ ] **TASK-030:** FASE 3 verification — Mark AC-18..AC-21 [x] + TRANSFORMATION_PROGRESS FASE 3 VERIFIED.
@@ -329,7 +329,7 @@
   - **Verification:** `pytest backend/tests/test_ssrf.py`
   - **Retries:** `0/3`
 
-- [x] **TASK-038:** `validate_all.py` → exit 0 + pytest suite verde. (VERIFICADO: pytest 64 passed; `python3 scripts/validate_all.py` → Overall Status VALIDATED, exit 0; 4 invariantes PASS; reports/validation.json regenerado)
+- [x] **TASK-038:** `validate_all.py` → exit 0 + pytest suite verde. (VERIFICADO: pytest **142 passed**; `python3 scripts/validate_all.py` → Overall Status VALIDATED, exit 0; cobertura suites de seguridad **88%** (security.py 97%, mfa.py 99%, web_tools.py 87%, audit.py 87%, rate_limit.py 82%, crypto_quantum.py 62%) con pytest-cov; nuevos tests unitarios test_security_core.py (33), test_web_tools_core.py (15), test_mfa_core.py (14), test_crypto_quantum.py (6); reports/validation.json regenerado)
   - **Owner:** `@qa-verifier`
   - **Depends On:** `TASK-033..TASK-037`
   - **Spec Ref:** SPEC.md §3 (AC-22, AC-23)
@@ -422,8 +422,73 @@
 ## DYNAMIC SECURITY & QA REMEDIATION QUEUE
 
 > `@redteam-auditor` o `@qa-verifier` añaden aquí tareas `SEC-FIX-XXX` si detectan fallos antes del Exit Gate.
+>
+> **Origen:** re-auditoría adversarial FASE 3 (TASK-029, ver `.factory/SECURITY_AUDIT.md` §3 y §5). Prioridad: las 4 primeras bloquean el Exit Gate (`HIGH` abiertos).
 
-*(Vacío inicialmente)*
+- [ ] **SEC-FIX-001:** [HIGH · VULN-007] Eliminar el fail-open de controles de seguridad cuando Redis no está disponible. Añadir `SECURITY_FAIL_MODE` (`open` dev / `closed` prod); si `ENVIRONMENT=production` y Redis no responde en `lifespan` → abortar el arranque. `is_jti_revoked` (`app/core/security.py:166-176`) debe denegar (401/503) si no puede consultar Redis; `RateLimitMiddleware.dispatch` (`app/core/rate_limit.py:104-112`) debe devolver 503 en modo closed en lugar de `call_next`. Añadir métrica `security_fail_open_total`.
+  - **Owner:** `@builder` -> `@qa-verifier`
+  - **Depends On:** `TASK-029`
+  - **Spec Ref:** SECURITY_AUDIT.md §3 VULN-007, §5
+  - **Target Files:** `backend/app/core/rate_limit.py`, `backend/app/core/security.py`, `backend/app/main.py`, `backend/app/core/config.py`
+  - **Verification:** `pytest tests/test_fail_closed.py` (nuevo: cliente Redis que lanza excepción → `is_jti_revoked` deniega; arranque prod sin Redis → excepción) + `pytest tests -q` verde
+  - **Retries:** `0/3`
+
+- [ ] **SEC-FIX-004:** [HIGH · VULN-008] Corregir la identidad del cliente en rate-limit detrás de Nginx: `request.client.host` es la IP del proxy (uvicorn `forwarded_allow_ips=127.0.0.1` por defecto) → bucket global de 100 req/min (5/min para login) que permite DoS de plataforma con 101 req/min. Configurar `--forwarded-allow-ips` acotado a la subred de Nginx (o middleware que solo acepte `X-Real-IP` del peer proxy conocido), y añadir límite por `sub` autenticado además de por IP.
+  - **Owner:** `@builder` -> `@qa-verifier`
+  - **Depends On:** `TASK-029`
+  - **Spec Ref:** SECURITY_AUDIT.md §3 VULN-008
+  - **Target Files:** `docker-compose.yml` (command uvicorn), `docker-compose.demo.yml`, `backend/app/core/rate_limit.py`, `backend/app/main.py`
+  - **Verification:** `pytest tests/test_rate_limit.py tests/test_rate_limit_proxy.py` (nuevo: dos XFF distintos → keys distintas) + `grep -c "forwarded-allow-ips" docker-compose.yml` ≥ 1
+  - **Retries:** `0/3`
+
+- [ ] **SEC-FIX-005:** [HIGH · VULN-006] Implementar lockout/brute-force en la ruta de login REAL. El `_BruteForceProtector` y `get_limiter_key` viven en `app/api/osint/auth.py`, cuyo router **no está montado**; `/api/v1/auth/login` (`app/api/auth.py:61-95`) no tiene lockout por cuenta. Reutilizar el protector (Redis, `(username, path)`, ventana+lockout), devolver 429 con `Retry-After`, registrar intentos fallidos en la cadena de auditoría y exigir MFA a `role=admin`.
+  - **Owner:** `@builder` -> `@qa-verifier`
+  - **Depends On:** `TASK-029, SEC-FIX-001`
+  - **Spec Ref:** SECURITY_AUDIT.md §3 VULN-006, AC-18
+  - **Target Files:** `backend/app/api/auth.py`, `backend/app/core/rate_limit.py`, `backend/app/core/audit.py`
+  - **Verification:** `pytest tests/test_auth_bruteforce.py` (nuevo: 5 intentos fallidos → 429 y lockout temporal; usuario distinto no afectado) + `pytest tests/test_auth.py -q` sin regresión
+  - **Retries:** `0/3`
+
+- [ ] **SEC-FIX-006:** [HIGH · VULN-009] Actualizar dependencias con advisories HIGH/CRITICAL y hacer el SCA bloqueante en CI. Mínimos: `python-jose>=3.4.0`, `python-multipart>=0.0.30`, `cryptography>=48.0.1`, `lxml>=6.1.0`, `torch>=2.6.0` (o retirar torch/ultralytics del runtime de API); `next` 15/16 (rama 14 EOL). Pinear `sha256` del modelo YOLO antes de `torch.load`. Añadir `pip-audit -r backend/requirements.txt` y `npm audit --audit-level=high` al pipeline.
+  - **Owner:** `@builder` -> `@qa-verifier`
+  - **Depends On:** `TASK-029`
+  - **Spec Ref:** SECURITY_AUDIT.md §3 VULN-009
+  - **Target Files:** `backend/requirements.txt`, `frontend/package.json`, `frontend/package-lock.json`, `backend/app/services/vision/yolo_loader.py`, `.github/workflows/*` o `Makefile`
+  - **Verification:** `pip-audit -r backend/requirements.txt` → 0 HIGH/CRITICAL; `npm audit --audit-level=high` → 0; `cd backend && python3 -m pytest tests -q` verde; `cd frontend && npm run build` exit 0
+  - **Retries:** `0/3`
+
+- [x] **SEC-FIX-002:** [HIGH · VULN-005] SSRF en `/api/v3/vision/*` — **CORREGIDO en TASK-029**. `SatelliteAnalyst._download_image` y `drone-frame` pasan por `safe_http_get` (validación por salto + IP pinning + peer check), `follow_redirects=False`, límite 25 MB, `ValueError → 400` y 500 sin `str(e)`. Evidencia: `pytest tests/test_vision_ssrf.py` → **10 passed** (metadata, loopback, RFC1918, IPv6, v4-mapped, file://, gopher://); `pytest tests -q` → **74 passed**; `compileall` exit 0.
+  - **Owner:** `@redteam-auditor` -> `@qa-verifier`
+  - **Depends On:** `TASK-029`
+  - **Spec Ref:** SECURITY_AUDIT.md §3 VULN-005
+  - **Target Files:** `backend/app/services/vision/analyst.py`, `backend/app/api/v3/router.py`, `backend/tests/test_vision_ssrf.py`
+  - **Verification:** `cd backend && SECRET_KEY="test-secret-key-32-chars-minimum!!!" python3 -m pytest tests/test_vision_ssrf.py -q` → 10 passed
+  - **Retries:** `0/3`
+
+- [x] **SEC-FIX-003:** [HIGH · VULN-003] Credenciales por defecto publicadas — **CORREGIDO en TASK-029**. `.env.example` ya no expone `SECRET_KEY` ni password de admin reales (`CHANGE_ME_*`), `docker-compose.yml`/`docker-compose.demo.yml` exigen `ADMIN_INITIAL_PASSWORD` explícito (sin `admin123`) y el validador de producción rechaza el hex histórico, exige ≥10 chars y bloquea placeholders. Evidencia: `grep -n admin123 docker-compose*.yml .env.example` → 0; `Settings()` en production con placeholders → `Refusing to start`; `pytest tests -q` → 74 passed.
+  - **Owner:** `@redteam-auditor` -> `@qa-verifier`
+  - **Depends On:** `TASK-029`
+  - **Spec Ref:** SECURITY_AUDIT.md §3 VULN-003, REQ-05
+  - **Target Files:** `.env.example`, `docker-compose.yml`, `docker-compose.demo.yml`, `backend/app/core/config.py`
+  - **Verification:** `grep -rc admin123 docker-compose.yml docker-compose.demo.yml .env.example` → 0; `validate_all.py` → VALIDATED
+  - **Retries:** `0/3`
+
+- [ ] **SEC-FIX-007:** [MEDIUM · VULN-015/016/017/018] Hardening perimetral: cerrar `/metrics` y OpenAPI en production (`docs_url=None`, token de scraping), añadir `headers()` (CSP/HSTS/XFO) a Next y servir `next start` en vez de `next dev`, aplicar `limit_req zone=auth` a `/auth/(login|refresh)` y `server_tokens off` en Nginx, y activar `requirepass` en Redis + auth en NATS.
+  - **Owner:** `@builder` -> `@qa-verifier`
+  - **Depends On:** `TASK-029`
+  - **Spec Ref:** SECURITY_AUDIT.md §3 VULN-015..018
+  - **Target Files:** `backend/app/main.py`, `frontend/next.config.mjs`, `frontend/Dockerfile`, `infra/nginx.conf`, `docker-compose.yml`
+  - **Verification:** `curl -s -o /dev/null -w "%{http_code}" localhost:8000/metrics` → 401/404; `grep -c "limit_req zone=auth" infra/nginx.conf` ≥ 1; `grep -c "requirepass" docker-compose.yml` ≥ 1
+  - **Retries:** `0/3`
+
+- [ ] **SEC-FIX-008:** [MEDIUM · VULN-010/022] Integridad de auditoría y cobertura de rutas: head único de la cadena en DB (`SELECT … FOR UPDATE`), persistencia estricta (sin swallow), y decisión explícita sobre los módulos OSINT no montados (montar con fixes previos o eliminar el código muerto) + test que verifique que todo router declarado está montado.
+  - **Owner:** `@architect` -> `@builder` -> `@qa-verifier`
+  - **Depends On:** `TASK-029`
+  - **Spec Ref:** SECURITY_AUDIT.md §3 VULN-010, VULN-022
+  - **Target Files:** `backend/app/core/audit.py`, `backend/app/main.py`, `backend/app/api/osint/*`, `backend/tests/test_routers_mounted.py` (nuevo)
+  - **Verification:** `pytest tests/test_audit_multiprocess.py tests/test_routers_mounted.py -q` → passed
+  - **Retries:** `0/3`
+
 
 ---
 

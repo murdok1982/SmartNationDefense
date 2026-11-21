@@ -79,7 +79,7 @@
 
 ### Feature F-04 — FASE 5 (Testing, PENDING — see TASKS.md)
 - **REQ-09:** New security suites: SEC-TEST-AUDIT-01, SEC-TEST-BRUTE-01, SEC-TEST-CLEARANCE-01, SEC-TEST-MFA-01, SSRF hardened suite.
-  - [ ] **AC-22:** pytest → todos passing, coverage security suites 80%+ (FASE 5). *(Verified FASE 5)*
+  - [x] **AC-22:** pytest → todos passing, coverage security suites 80%+ (FASE 5). *(Verified FASE 5: 142 passed; cobertura suites seguridad 88% — security.py 97%, mfa.py 99%, web_tools.py 87%, audit.py 87%, rate_limit.py 82%)*
 - **REQ-10:** Full: validate_all.py exit 0. *(Verified FASE 5)*
 
 ### Feature F-05 — FASE 6 (Observability, PENDING — see TASKS.md)
@@ -90,7 +90,7 @@
 
 ### Feature F-06 — FASE 7 (Mobile, PENDING — see TASKS.md)
 - **REQ-13:** Mobile: pubspec completo + offline mesh hardened.
-  - [ ] **AC-25:** `flutter analyze` → 0 errors, `flutter test` → pass (FASE 7). *(Verified FASE 7)*
+  - [x] **AC-25:** `flutter analyze` → 0 errors, `flutter test` → pass (FASE 7). *(Verified FASE 7: Flutter 3.24.5 — analyze 0 issues, flutter test 11 passed)*
 
 ### Feature F-07 — FASE 9 (Docs Regeneration, PENDING — see TASKS.md)
 - **REQ-14:** Docs regenerate desde realidad FASE 0/1/2: ARCHITECTURE_CURRENT.md, AUDIT.md, ARCHITECTURE.md, API.md, FEATURE_MATRIX.md, VALIDATION_PLAN.md, FINAL_VALIDATION_REPORT.md, ENGINEERING_RISKS.md, SECURITY_AUDIT.md (base, FASE 2+).
