@@ -369,7 +369,7 @@
 
 ## PHASE 7: FASE 7 — Móvil (PENDING)
 
-- [ ] **TASK-042:** Pubspec completion: features completas + offline mesh hardened.
+- [x] **TASK-042:** Pubspec completion: features completas + offline mesh hardened. (VERIFICADO REAL: Flutter 3.24.5 portable en /tmp/opencode/flutter sobre copia /tmp/opencode/mobile_check → `flutter pub get` OK, `flutter analyze` → **No issues found!** (0 errores; antes 4: OfflineQueue inexistente + CardThemeData), `flutter test` → **11 tests passed**. Implementado `lib/core/storage/offline_queue.dart` (cola persistente atómica, maxItems 500, recuperación de JSON corrupto) y `cardTheme: CardTheme`; test `test/mesh_protocol_test.dart` (firma HMAC, anti-tamper, PSK distinta, canonicalización, handshake, serialización, router dedup/TTL). NOTA: no se ejecutó en dispositivo/emulador Android)
   - **Owner:** `@builder` -> `@ui-artisan` -> `@qa-verifier`
   - **Depends On:** `NONE`
   - **Spec Ref:** SPEC.md §3 (AC-25)
