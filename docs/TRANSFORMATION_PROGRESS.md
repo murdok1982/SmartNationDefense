@@ -1,6 +1,6 @@
 # TRANSFORMATION_PROGRESS.md — Estado del Proceso de Transformación (SmartNationDefense)
 
-**Doc ID:** PRG-2026-SND-001 | **Estado:** `FASE 2a — Seguridad CRITICA EJECUTANDO` (commits de seguridad verificados: `837b68f`)
+**Doc ID:** PRG-2026-SND-001 | **Estado:** `FASE 3 — auditoría en curso; FASE 2/5/6/8 verificadas` (41/46 tasks)
 
 ---
 
@@ -10,13 +10,13 @@
 |---|---|---|---|---|
 | FASE 0 | Repositorio Audit | **COMPLETO** (Verificado FASE 0) | 21-11-2026 | `docs/audit/*`, 5 documentos, ARCH-009+TD-010. Verificado por qa-verifier (código real). |
 | FASE 1 | Rediseño Arquitectónico | **COMPLETO** (Verificado FASE 1) | 21-11-2026 | `docs/architecture/*`, ADR-001..013, TASKS.md PHASE 0-1. |
-| FASE 2 | Backend Hardening | `PENDING — FASE 2a en curso` | FASE 2 | 46 tasks activas — Ver TASKS.md PHASE 2 (User, clearance v1, EncryptedField, infra/ssl+fernet.key, rate-limit, DLQ, docs gen, teams). |
+| FASE 2 | Backend Hardening | **COMPLETO** (Verificado 21-11-2026) | 21-11-2026 | TASK-014/023/031 + AC-08..AC-17 `[x]`; pytest 64 passed. |
 | FASE 3 | Seguridad + SEC-FIX-XXX | `PENDING` | FASE 3 | High-02, High-03, MEDIUM-01, MEDIUM-02, SSRF IP pinning, redteam re-run. |
-| FASE 4 | Data Migration & Modernization | `PENDING` | FASE 4 | User unification, AC-08, ADR-003 execution. |
-| FASE 5 | Testing Suite | `PENDING` | FASE 5 | SEC-TEST-*, pytest, SSRF hardened, validate_all.py exit 0. |
-| FASE 6 | Observabilidad | `PENDING` | FASE 6 | Grafana dashboards, Alertmanager, healthcheck arch. |
+| FASE 4 | Data Migration & Modernization | **COMPLETO** (Verificado 21-11-2026) | 21-11-2026 | TASK-031 User unified export, TASK-032/044 clearance v1+v3 (0 gaps en 141 rutas). |
+| FASE 5 | Testing Suite | **COMPLETO** (Verificado 21-11-2026) | 21-11-2026 | TASK-033..038: 64 passed, SSRF 18 tests, brute-force distribuido, validate_all VALIDATED. |
+| FASE 6 | Observabilidad | **COMPLETO estático** (Verificado 21-11-2026) | 21-11-2026 | `/metrics` real, 7 dashboards, Alertmanager 9 alertas, 12/12 healthchecks. Runtime Docker pendiente. |
 | FASE 7 | Móvil (Flutter) | `PENDING` | FASE 7 | pubspec completion, flutter analyze, offline mesh hardened. |
-| FASE 8 | Deprecación Legacy | `PENDING` | FASE 8 | AuditLog dedup, legacy migrations archive, docs old-to-new. |
+| FASE 8 | Deprecación Legacy | **COMPLETO** (Verificado 21-11-2026) | 21-11-2026 | TASK-043 AuditLog dedup (shim sin mapeo); migraciones legacy archivadas (TASK-011). |
 | FASE 9 | Docs regeneration | `PENDING` | FASE 9 | Regenerar docs/{ARCHITECTURE_CURRENT, AUDIT, ARCHITECTURE, API, FEATURE_MATRIX, VALIDATION_PLAN, FINAL_VALIDATION_REPORT, ENGINEERING_RISKS}. |
 
 ---
@@ -98,6 +98,44 @@
 | TASK-028 (NATS DLQ + idempotencia) | `VERIFIED` | `nats:idem:*` (SETNX+TTL), DLQ `<subject>.dlq` + `nats:dlq:*`, ack/nak; `test_events_dlq.py` 3 passed |
 
 **Evidencia global:** `python3 -m pytest backend/tests -q` → **49 passed**; `python3 scripts/validate_all.py` → **VALIDATED** (49 passed / 0 failed), 4 invariantes de seguridad PASS.
+
+### FASE 2 — Cierre Backend Hardening (TASK-014/023/031) — COMPLETO (Verificado 21-11-2026)
+
+| Tarea | Estado | Evidencia real |
+|---|---|---|
+| TASK-014 (TD-008) | `VERIFIED` | `config.py`: `MULTI_TENANT=False`, `DEFAULT_TENANT_ID="default"`; snippet `TASK-014 OK False default`; `osint/deps.py:211` ya los consumía |
+| TASK-023 (AC-08..AC-17) | `VERIFIED` | AC-08 User único (`tablename=users`, 1 declaración); AC-09 clearance 5 passed; AC-10 fail-closed L42/L54; AC-11 `get_limiter_key` L132 + 2 passed; AC-12 `grep -c X-XSS`=0; AC-13 legacy archivado; AC-14 cert CN=localhost 2036; AC-15 fernet.key; AC-16 healthz L37; AC-17 guardian 6 entradas. SPEC.md AC-08..AC-17 `[x]` |
+| TASK-031 (TD-012) | `VERIFIED` | `from app.db.models import User` → `users`; `__all__` con User + schemas |
+
+### FASE 3b-bis — ADR-010 Clearance leak reduction v1+v3 (TASK-032/044) — COMPLETO (Verificado 21-11-2026)
+
+- **Hallazgo real:** introspección del árbol de dependencias de `app.main.app` → **49 rutas `/api/v1` solo-autenticadas** (satellite/osint/intel/agents/tactical) y **11 rutas `/api/v3`** (COA, fusion, vision) sin `require_clearance`.
+- **Fix:** `_CLEARANCE_DEPS = [Depends(get_current_user), Depends(require_clearance("RESTRICTED"))]` aplicado a 19 routers en `app/main.py` (defensa en profundidad; los handlers con CONFIDENTIAL conservan su nivel).
+- **Regresión:** `backend/tests/test_v1_clearance_matrix.py` (5 tests) introspección → 141 rutas v1+v3, **0 gaps** (health/auth públicos por diseño).
+- **Nota honesta:** `app/api/v1/media.py` y `app/api/v1/intel.py` existen pero **no están montados** en `main.app` (código muerto detectado; no se montó para no exponer el PUT presigned sin clearance).
+
+### FASE 5 — Testing Suite (TASK-033..038) — COMPLETO (Verificado 21-11-2026)
+
+| Tarea | Estado | Evidencia real |
+|---|---|---|
+| TASK-033 SEC-TEST-AUDIT-01 | `VERIFIED` | `test_audit_persistence.py`: hash chaining, tamper detection (detalle + reordenación), concurrencia 10 tareas → 3 passed |
+| TASK-034 SEC-TEST-BRUTE-01 | `VERIFIED` | `TestDistributedBruteForce` (4 tests): lockout a MAX_ATTEMPTS, aislamiento por path, visibilidad desde segundo worker (estado Redis), reset en success → `test_rate_limit.py` 6 passed. **Bug de test-double corregido:** `FakeRedis.delete` no limpiaba ZSETs (habría ocultado fallos reales) |
+| TASK-035 SEC-TEST-CLEARANCE-01 | `VERIFIED` | `test_clearance_enforcement.py` 5 passed + `test_v1_clearance_matrix.py` 5 passed |
+| TASK-036 SEC-TEST-MFA-01 | `VERIFIED` | `test_mfa_security.py` 3 passed: cifrado en reposo roundtrip, aislamiento de tipo, ticket MFA rechazado (401) |
+| TASK-037 SSRF hardened | `VERIFIED` | `test_ssrf.py` 12→18 tests (+IPv6 loopback/ULA/link-local/IPv4-mapped/resolución IPv6) |
+| TASK-038 validate_all | `VERIFIED` | `pytest` **64 passed**; `validate_all.py` → **VALIDATED**, exit 0, 4 invariantes PASS |
+
+### FASE 6 — Observabilidad (TASK-039/040/041) — COMPLETO estático (Verificado 21-11-2026)
+
+- **Métricas reales:** `backend/app/core/metrics.py` (Counter/Histogram/Gauge) + `/metrics` en `app/main.py` (prometheus_client 0.21.1) + middleware de latencia/errores por plantilla de ruta. Verificado vivo con TestClient: HTTP 200 `text/plain; version=0.0.4`, `sesis_http_requests_total{method="GET",path="/api/v1/health",status="200"} 1.0`.
+- **Dashboards:** 7 JSON válidos (`sesis-overview`, `c2`, `auth`, `osint`, `tactile`, `maven`, `security`) con PromQL sobre las series reales; eliminado `sesis-main.json` legacy (consultaba `http_requests_total`, inexistente). Datasource con `uid: prometheus`.
+- **Alertmanager:** `infra/alertmanager/alertmanager.yml` (default/critical + slack/slack-pager + inhibit_rules) y `alerts.yml` (9 alertas: API down, module down, p95, 5xx ratio, 401/403 spikes, brute-force lockout, clearance denied). Servicio en compose (127.0.0.1:9093, `--config.expand-env`, healthcheck, volumen `alertmanagerdata`); `prometheus.yml` con `rule_files` + `alerting`.
+- **Healthchecks:** **12/12** servicios con healthcheck (añadido `celery-worker` vía `celery inspect ping`).
+- **Límite honesto:** Docker no está instalado en este entorno → no se ejecutó `docker compose config` ni `curl localhost:9093/-/healthy`; validación YAML/JSON + conteo programático.
+
+### FASE 8 — Dedup legacy (TASK-043) — COMPLETO (Verificado 21-11-2026)
+
+- `app/db/models/osint/audit_log.py` es shim de re-export de `persistence.AuditLog` (sin mapeo duplicado); `osint/audit.py` importa el modelo canónico; 1 tabla `audit_log`.
 
 ### FASE 1 — COMPLETO (Verificado 21-11-2026)
 
