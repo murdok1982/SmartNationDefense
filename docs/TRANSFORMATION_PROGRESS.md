@@ -66,6 +66,17 @@
 |---|---|---|
 | TASK-008 (TD-001 Consolidación User) | `VERIFIED` | collisiones 0: `grep "users" tablename` → 1; `class User(Base)` único (persistence.py:296); intel/user.py y osist/user.py = re-export (`OU is IU is User → True`); aliases `IntelUserSchema`/`OsistUserSchema` (persistence.py:367-368); `osint/case.py` FK→`User.__table__.c.id`; pytest **35 passed** |
 
+### FASE 2a-ter-bis — CI/CD + API Contracts (B1-02, B1-04) — COMPLETO (Verificado 21-11-2026)
+
+- **B1-02 — GitHub Actions CI (`085bbe2`):** `.github/workflows/ci.yml` — YAML válido (`yaml.safe_load: CI`), steps: checkout → setup-python 3.12 → pip install requirements.txt + pytest==8.3.4 → `python -m pytest backend/tests -q` (sin saltar) → compileall -q backend → bandit fallback py_compile → pip check → security gate `python scripts/validate_all.py` → frontend build advisory (continue-on-error, honesto). CI no se ejecuta localmente (documentado en archivo).
+- **B1-04 — API Contracts (`085bbe2`):** `backend/contracts/openapi.json` — OpenAPI real de la app (`cd backend && python3 -c "import json; from app.main import app; json.dump(app.openapi(), open('contracts/openapi.json','w'), indent=2)"` — verificado: **168 paths**); `docs/architecture/CONTRACTS.md` — 134 paths `/api/v1` + endpoint table real; `backend/tests/test_contracts.py` — **5 passed**.
+- **validate_all.py parser fix:** commit sucesivo — `{'passed': 40, 'failed': 0} VALIDATED` real.
+
+### FASE 2a-ter-bis — CI/CD + API Contracts (B1-02, B1-04) — COMPLETO (Verificado 21-11-2026)
+
+- **B1-02 — GitHub Actions CI (`085bbe2`):** `.github/workflows/ci.yml` (YAML valid, `yaml.safe_load: CI`); steps: checkout → setup-python 3.12 → `pip install -r backend/requirements.txt` + `pip install pytest==8.3.4` → `python -m pytest backend/tests -q` (sin saltar) → `python -m compileall -q backend` → bandit fallback py_compile → `pip check` → security gate `python scripts/validate_all.py` → frontend build advisory (continue-on-error). Real: suite **40 passed exit 0**; pytest -q exit 0; structure validated.
+- **B1-04 — API Contracts (`496b0b5`):** `backend/contracts/openapi.json` — OpenAPI REAL (`cd backend && python3 -c "import json; from app.main import app; json.dump(app.openapi(), open('contracts/openapi.json','w'), indent=2)"` — **168 paths**); `backend/contracts/README.md`; `docs/architecture/CONTRACTS.md` — 136 rows, 134 endpoints `/api/v1`; `backend/tests/test_contracts.py` — **5 passed**; drift: contract ⊆ live app routes.
+
 ### FASE 1 — COMPLETO (Verificado 21-11-2026)
 
 | Entregable | Archivo | Verificación |
