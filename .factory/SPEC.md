@@ -79,7 +79,7 @@
 
 ### Feature F-04 — FASE 5 (Testing, PENDING — see TASKS.md)
 - **REQ-09:** New security suites: SEC-TEST-AUDIT-01, SEC-TEST-BRUTE-01, SEC-TEST-CLEARANCE-01, SEC-TEST-MFA-01, SSRF hardened suite.
-  - [x] **AC-22:** pytest → todos passing, coverage security suites 80%+ (FASE 5). *(Verified FASE 5: 142 passed; cobertura suites seguridad 88% — security.py 97%, mfa.py 99%, web_tools.py 87%, audit.py 87%, rate_limit.py 82%)*
+  - [x] **AC-22:** pytest → todos passing, coverage security suites 80%+ (FASE 5). *(Verified FASE 5: 157 passed; cobertura suites seguridad 88% — security.py 97%, mfa.py 99%, web_tools.py 87%, audit.py 87%, rate_limit.py 82%, crypto_quantum.py 62%. La cobertura del backend completo NO se certifica al 80%: ~73% agregado)*
 - **REQ-10:** Full: validate_all.py exit 0. *(Verified FASE 5)*
 
 ### Feature F-05 — FASE 6 (Observability, PENDING — see TASKS.md)

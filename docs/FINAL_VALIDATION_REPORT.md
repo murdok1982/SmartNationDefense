@@ -1,378 +1,637 @@
-# FINAL VALIDATION REPORT: SmartNationDefense / SESIS-FEDERATION
+# FINAL_VALIDATION_REPORT.md — Reporte de validación final (FASE 9)
 
-**Document Identifier:** SND-SEC-VAL-2026-09  
-**Repository:** `murdok1982/SmartNationDefense` (SESIS-FEDERATION)  
-**Execution Date:** 2026-09-25  
-**Evaluation Standard:** Independent Empirical Software & Security Engineering Audit  
-**Master Validation Status:** `VALIDATED (PROTOTYPE / REFERENCE IMPLEMENTATION)`  
-**Production Readiness:** `NO APTO PARA PRODUCCIÓN CRÍTICA SIN DESPLIEGUE EN INFRAESTRUCTURA ENDURECIDA Y CERTIFICACIÓN FORMAL (ENS ALTA / COMMON CRITERIA)`
+**Doc ID:** FVR-2026-SND-001
+**Proyecto:** SmartNationDefense / SESIS-FEDERATION
+**Fecha de ejecución:** 2026-11-21
+**Commit de referencia:** `3152f117596bc4d5abc4fbd46a4035d1e43e5c7e`
+**Árbol de trabajo:** con cambios sin commitear en frontend/config y tests nuevos (ver §2.4)
+**Ejecutor:** `@architect` (TASK-045) con comandos de `@qa-verifier`
+**Veredicto global:** **NO APROBADO PARA PRODUCCIÓN** — validación parcial con bloqueos declarados (Docker y SEC-FIX-007/008)
+**Actualización:** post FASE 7 + SEC-FIX-001/004/005/006; sustituye las cifras previas de tests y del bloqueo móvil.
 
----
-
-## 1. Executive Summary
-
-This document presents the definitive technical and security validation of the **SmartNationDefense / SESIS-FEDERATION** repository. Prior to this intervention, the repository presented substantial discrepancies between architectural claims (which advertised "Military-grade", "Quantum-safe", "Palantir Gotham alternative", and "Zero-trust") and actual codebase reality (which contained unauthenticated endpoints, plaintext MFA secret storage, ticket-access token conflation, SSRF vulnerabilities, broken frontend/mobile module imports, and missing DB persistence models).
-
-Through a disciplined engineering methodology (`AUDIT -> UNDERSTAND -> BASELINE -> DESIGN -> IMPLEMENT -> INTEGRATE -> TEST -> SECURITY AUDIT -> BENCHMARK -> VALIDATE -> DOCUMENT -> REGRESSION TEST`), the platform has been systematically hardened:
-1. **Critical Vulnerability Remediation:** Plaintext MFA secrets have been transitioned to AES-256-GCM authenticated encryption at rest; MFA challenge tickets have been cryptographically isolated from OAuth2 Bearer tokens with single-use Redis/in-memory jti revocation; SSRF protections have been hardened with full RFC-compliant IP range blocking; and audit log integrity has been secured with `asyncio.Lock` concurrency guards and database rehydration.
-2. **Structural Integrity:** The incomplete web frontend and Flutter mobile tactician stubs were fully restored with strongly typed API clients, data mappers, and functional screen implementations.
-3. **Empirical Verification:** The automated test suite has been expanded from 16 basic unit tests to 35 comprehensive end-to-end and security tests. All 35 tests pass deterministically (100% pass rate in 7.51 seconds), verifying the end-to-end intelligence cycle from multi-sensor ingest to JDL fusion and human audit review.
-4. **Taxonomy Realism:** All marketing hyperboles have been purged from documentation, matrices, and codebases, replacing unsubstantiated claims with accurate engineering taxonomies (`VALIDATED`, `INTEGRATED`, `PARTIAL`, `EXPERIMENTAL`, `STUB`, `UNSUPPORTED`).
+> Este reporte no es un certificado de calidad. Es un registro de lo que se ejecutó, lo que pasó, lo que no se pudo ejecutar y por qué. Cada resultado incluye el comando.
 
 ---
 
-## 2. Architecture Overview (As-Built)
+## 0. Tabla de evidencia actual
 
-The as-built architecture is a modular multi-tier intelligence processing and Command & Control (C2) decision-support platform designed around Python FastAPI backend services, a Vue 3 / Vite analytical frontend, and a Flutter mobile tactical application.
+| Evidencia | Comando | Resultado | Estado |
+| :--- | :--- | :--- | :--- |
+| Suite backend | `SECRET_KEY=... pytest backend/tests -q` | **157 passed**, 1906 warnings, 15.19s | VERIFICADO |
+| Validación global | `python3 scripts/validate_all.py` | `VALIDATED`, exit 0, 4 invariantes PASS | VERIFICADO |
+| Cobertura seguridad (6 módulos) | `pytest --cov=... --cov-report=term` | **88%** (security 97%, mfa 99%, web_tools 87%, audit 87%, rate_limit 82%, crypto_quantum 62%) | VERIFICADO (reportado) |
+| Cobertura backend completo | `pytest --cov=app` | ≈73% agregado; no alcanza el 80% | NO VERIFICADO al 80% |
+| Móvil analyze | `cd mobile/sesis_cop && flutter analyze` | `No issues found!` | VERIFICADO (Flutter 3.24.5 portable) |
+| Móvil tests | `cd mobile/sesis_cop && flutter test` | **11 passed** | VERIFICADO |
+| SCA backend | `pip-audit` + `docs/security/SCA_ALLOWLIST.md` | **0 vulnerabilidades** | VERIFICADO |
+| Build frontend | `tsc --noEmit` + `next build` | 0 errores, 4 rutas, Node 20.18 | VERIFICADO |
+| SCA frontend | `npm audit --omit=dev --audit-level=high` | 0 vulnerabilidades de producción; residual dev `brace-expansion` | VERIFICADO |
+| Contrato | `app.openapi()` | 168 paths / 177 operaciones | VERIFICADO |
+| Docker | `docker compose config` | Docker ausente | BLOQUEADO |
 
-```mermaid
-graph TD
-    subgraph Tactical Clients
-        WEB[Vue 3 / Vite COP Web Console]
-        MOB[Flutter Mobile Tactical Client]
-    end
+---
 
-    subgraph Edge & Ingestion
-        GW[FastAPI Gateway / Reverse Proxy]
-        SSRF_G[SSRF Guard & URL Validator]
-        BRUTE[Brute Force & Rate Limiter]
-    end
+## 1. Resumen ejecutivo
 
-    subgraph Core Intelligence Services
-        AUTH[Auth & MFA Engine - AES-GCM]
-        ABAC[ABAC Clearance Guard]
-        OSINT[OSINT Harvester & Tools]
-        CV[Computer Vision & Satellite Pipeline]
-        JDL[JDL Multi-Sensor Fusion Engine]
-        AGENTS[Multi-Agent Consensus System]
-        WAR[Non-Operational Wargaming Engine]
-    end
+| Área | Resultado | Estado |
+| :--- | :--- | :--- |
+| Backend — importación | `app.main` importa | VERIFICADO |
+| Backend — tests | **157 passed**, 0 failed, 1906 warnings | VERIFICADO |
+| Backend — cobertura seguridad (6 módulos) | **88%** (security 97%, mfa 99%, web_tools 87%, audit 87%, rate_limit 82%, crypto_quantum 62%) | VERIFICADO (reportado) |
+| Backend — cobertura completa | ≈73% agregado; no medida al 80% | NO VERIFICADO al 80% |
+| Backend — validación global | `VALIDATED`, exit 0, 4 invariantes PASS | VERIFICADO |
+| Contrato OpenAPI | 168 paths, 177 operaciones | VERIFICADO |
+| Seguridad — suites | SSRF, auth, clearance, MFA, auditoría, rate limit, DLQ | VERIFICADO (con dobles) |
+| Frontend — build | `tsc` 0, `next build` OK, 4 rutas | VERIFICADO |
+| Móvil — analyze | **0 errores** (`No issues found!`) | VERIFICADO |
+| Móvil — test | **11 passed** | VERIFICADO |
+| Infra — compose | 12 servicios, 12 healthchecks (estático) | VERIFICADO (estático) |
+| Infra — runtime | Docker ausente | BLOQUEADO |
+| Observabilidad | `/metrics` real, 7 dashboards, 8 alertas; runtime pendiente | PARCIAL |
+| Documentación | 8 docs regenerados | VERIFICADO (contenido) |
+| SCA backend | `pip-audit` con allowlist → 0 vulnerabilidades | VERIFICADO |
+| SCA frontend | `npm audit --omit=dev` → 0 vulnerabilidades prod | VERIFICADO |
+| Release | Gate incompleto (Docker/SEC-FIX) | **NO APROBADO** |
 
-    subgraph State & Persistence
-        PG[(PostgreSQL + PostGIS)]
-        REDIS[(Redis Cache / Bus / Nonce Store)]
-        AUDIT[(Cryptographic SHA-256 Audit Log)]
-    end
+---
 
-    WEB -->|HTTPS + Bearer JWT| GW
-    MOB -->|HTTPS + Tactical JWT| GW
-    GW --> BRUTE
-    GW --> SSRF_G
-    GW --> AUTH
-    AUTH --> ABAC
-    ABAC --> OSINT
-    ABAC --> CV
-    ABAC --> JDL
-    ABAC --> AGENTS
-    ABAC --> WAR
+## 2. Contexto de ejecución
 
-    OSINT --> JDL
-    CV --> JDL
-    JDL --> AGENTS
-    AGENTS --> AUDIT
+### 2.1 Entorno
 
-    AUTH --> PG
-    AUTH --> REDIS
-    AUDIT --> PG
-    JDL --> REDIS
+| Elemento | Valor | Comando |
+| :--- | :--- | :--- |
+| SO | Linux | — |
+| Python | 3.14.10 | `python3 --version` |
+| Node | 20.18 en copia `/tmp/opencode/fe_verify`; ausente en PATH local | `node -v` en la copia |
+| Docker | Ausente | `which docker` |
+| Flutter | 3.24.5 portable en `/tmp` | `flutter --version` |
+| SQLite | vía `aiosqlite` | requirements |
+| PostgreSQL | No levantado | — |
+| Redis | No levantado | — |
+| NATS | No levantado | — |
+| Neo4j | No levantado | — |
+
+### 2.2 Consecuencias
+
+- Los tests usan SQLite, no PostgreSQL/PostGIS.
+- Los tests de Redis/NATS usan dobles.
+- No se ejecutó `docker compose`.
+- `next build` se ejecutó en copia limpia con Node 20.18; no en el PATH local.
+- Se ejecutaron `flutter analyze` y `flutter test` sobre copia portable.
+
+### 2.3 Comandos ejecutados (lista)
+
+```bash
+find backend/app -name "*.py" | wc -l
+find backend/app -name "*.py" -exec cat {} + | wc -l
+python3 -c "import json;d=json.load(open('backend/contracts/openapi.json'));print(len(d['paths']))"
+SECRET_KEY="test-secret-key-32-chars-minimum!!!" python3 -m pytest backend/tests -q
+python3 scripts/validate_all.py
+python3 -m pytest backend/tests --collect-only -q
+cd mobile/sesis_cop && flutter analyze && flutter test
+python3 -c "import yaml;d=yaml.safe_load(open('docker-compose.yml'));print(len(d['services']))"
+grep -c "alert:" infra/alertmanager/alerts.yml
+# Frontend en copia limpia
+rsync -a frontend/ /tmp/opencode/fe_verify/ && cd /tmp/opencode/fe_verify
+npm ci && npx tsc --noEmit && npm run build && npm audit --omit=dev --audit-level=high
+python3 -c "import yaml;..."  # healthchecks
 ```
 
-### Component Status Summary
-* **Gateway & Ingestion:** FastAPI routing with middleware-based rate limiting and SSRF protection.
-* **Authentication Service:** Modular JWT issuance with dedicated MFA challenge tokens and Argon2/PBKDF2 password hashing.
-* **JDL Fusion Pipeline:** 5-level (L0–L4) algorithmic data fusion processing raw sensor entities into unified tactical tracks.
-* **Audit Subsystem:** Append-only cryptographic SHA-256 hash-chaining log with concurrency locking.
+### 2.4 Estado del árbol
+
+Al cierre de la medición, `git status --short` muestra:
+
+- Cambios ya commiteados en `3152f11`: FASE 7 (offline queue + 11 tests), SEC-FIX-001/004/005/006 y Next 16.4.6 + React 19.
+- Sólo quedan modificados los 8 documentos de FASE 9 y `reports/validation.json`; hay tres imágenes JPEG sin seguimiento.
+- No hay cambios pendientes en `backend/` ni `mobile/`.
+
+Esto significa que la validación de código corresponde al commit `3152f11`; los documentos son la única capa en edición.
 
 ---
 
-## 3. Security Posture & Threat Model Results
+## 3. Backend
 
-The codebase was analyzed against the **STRIDE** threat model. The table below details the identified vulnerabilities and their empirical remediation:
+### 3.1 Importación
 
-| Threat Category | Original Vulnerability | Remediation Applied | Verification Status |
-| :--- | :--- | :--- | :--- |
-| **Spoofing** | Conflation of intermediate `mfa_ticket` with full `access_token` allowing direct API bypass. | Introduced typed `type="mfa_challenge"` tokens; rejected on all protected endpoints. Single-use jti revocation in Redis. | `VALIDATED` (Unit & E2E Tests) |
-| **Tampering** | Plaintext MFA seed storage in `osint/auth.py` (`def _encrypt_secret: return secret`). | Implemented authenticated AES-256-GCM encryption with SHA-256 key derivation and fail-fast production key enforcement. | `VALIDATED` (Cryptographic Test) |
-| **Tampering** | In-memory audit log chain subject to race condition under asynchronous concurrent writes. | Added `asyncio.Lock()` to `log_event()` and persistence rehydration from PostgreSQL `AuditLog`. | `VALIDATED` (Concurrency Test) |
-| **Information Disclosure** | Clearance bypass allowing low-clearance operators to read top-secret intelligence feeds. | ABAC matrix enforcement verifying user clearance vs resource classification (`OPEN` through `TOP_SECRET`). | `VALIDATED` (Clearance Matrix Test) |
-| **Denial of Service** | In-memory brute force counter reset upon worker restart. | Redis-backed distributed brute-force protection with sliding time-window decay. | `VALIDATED` (Rate Limit Test) |
-| **Elevation of Privilege** | SSRF attack vector via incomplete IP blacklisting in web scraping tools. | Blocked 0.0.0.0/8, CGNAT 100.64.0.0/10, benchmarking 198.18.0.0/15, IPv4-mapped IPv6, and cloud metadata IPs. | `VALIDATED` (SSRF Test Suite) |
-
----
-
-## 4. Authentication, Authorization & MFA
-
-### 4.1 Authentication Engine
-- **Token Format:** Stateless JWT signed with HS256 (or RS256 where public-key verification is configured).
-- **Hardening:** Reject tokens lacking explicit `type="access"` for protected API endpoints.
-- **Fail-Fast Validation:** In production environments (`ENVIRONMENT=production` or `DEMO_MODE=False`), the system terminates startup if default secrets (`change-me-in-production`, `sesis:sesis`, etc.) are detected.
-
-### 4.2 MFA Implementation
-- **Algorithm:** RFC 6238 TOTP (Time-Based One-Time Password) with 30-second time steps and 1-step drift allowance.
-- **Storage:** TOTP secrets are encrypted via AES-256-GCM before writing to the database. Nonces and authentication tags are stored alongside ciphertext.
-- **Challenge Lifecycle:** Upon successful primary credential validation, an `mfa_challenge` token is returned (validity: 5 minutes). Only the `/auth/mfa/verify` endpoint accepts this challenge token.
-
-### 4.3 Authorization & Clearance (ABAC)
-- **Levels Supported:** `OPEN`, `RESTRICTED`, `CONFIDENTIAL`, `SECRET`, `TOP_SECRET`.
-- **Enforcement Rules:** Operators with clearance level $L_O$ can only access intelligence assets where classification $L_A \le L_O$. Attempts to access assets with $L_A > L_O$ trigger an immediate HTTP 403 Forbidden and generate an audit security alert.
-
----
-
-## 5. Audit & Traceability
-
-### 5.1 Cryptographic Hash Chaining
-Every audited system action generates a record formatted as:
-$$H_n = \text{SHA-256}(H_{n-1} \,\|\, T_n \,\|\, U_n \,\|\, A_n \,\|\, D_n)$$
-Where:
-- $H_{n-1}$: SHA-256 digest of previous audit record (genesis hash: `0`*64).
-- $T_n$: UTC timestamp in ISO 8601 format.
-- $U_n$: Actor user ID or subagent identifier.
-- $A_n$: Action name (e.g., `AUTH_LOGIN`, `INTEL_INGEST`, `JDL_FUSION_LEVEL1`).
-- $D_n$: Canonical JSON payload of action parameters.
-
-### 5.2 Tamper Detection
-Any manual alteration of an existing audit entry invalidates all downstream hash values. The audit verification routine continuously audits this chain and flags any divergence.
-
-### 5.3 Concurrency Protection
-Audit event emission is serialized via an asynchronous mutex lock (`asyncio.Lock`), preventing fork/branch anomalies under heavy parallel request loads.
-
----
-
-## 6. Data Model & Schema Consistency
-
-### 6.1 Entity Resolution
-The repository previously had overlapping declarative models in `backend/app/db/models/persistence.py`, `backend/app/models/intel/user.py`, and `backend/app/models/osint/user.py`. The models have been unified around the persistence layer schema:
-* `User`: Primary identity, hashed password, clearance level, role, MFA status, encrypted TOTP secret.
-* `AuditLog`: Sequence ID, previous hash, current hash, event type, actor ID, payload JSON, timestamp.
-* `IntelItem`: Identifier, source type, raw payload, classification level, confidence score, ingestion timestamp.
-* `TacticalTrack`: Correlated kinematic track produced by JDL fusion engine.
-
-### 6.2 Spatial Types
-All spatial attributes (coordinates, operational polygons, sensor footprints) utilize WGS84 (`EPSG:4326`) geometry types with PostGIS extension validation.
-
----
-
-## 7. AI/ML Implementation & Limitations
-
-### 7.1 Implemented Capabilities
-- **Anomaly Detection:** Statistical z-score and isolation-based outlier filtering on streaming kinematic tracks.
-- **Track Correlation:** Distance-based Mahalanobis and Euclidean association for sensor measurement clustering.
-
-### 7.2 Empirical Boundaries
-- **No Self-Learning in Critical Paths:** The ML models function as heuristic filters and classification assistants. They **do not** possess autonomous decision-making authority.
-- **Model Dependencies:** YOLOv8 and optical detection modules require pre-downloaded weights (`yolov8n.pt`). In air-gapped environments without local weights, modules gracefully degrade to synthetic/simulated detection bounding boxes.
-
----
-
-## 8. LLM Integration & Safeguards
-
-### 8.1 LLM Architecture
-- **Providers Supported:** Ollama (local/offline) and OpenAI/Azure API connectors.
-- **Role:** Synthesis of unstructured OSINT text, drafting situational summaries, and aiding human analysts in report structuring.
-
-### 8.2 Safeguards & Prompt Injection Mitigations
-- All incoming OSINT articles and external documents are sanitized and tagged as untrusted data inputs.
-- Human review is strictly required before any LLM-drafted report or intelligence product is promoted to active operational status.
-
----
-
-## 9. Multi-Agent Orchestration & Consensus
-
-### 9.1 Consensus Mechanics
-The multi-agent system uses a Byzantine-tolerant weighted scoring protocol for hypothesis validation:
-1. **Analyst Agent:** Proposes intelligence correlation hypothesis.
-2. **Validator Agent:** Cross-checks hypothesis against historical sensor evidence and confidence thresholds.
-3. **Red-Team Agent:** Evaluates potential deception, sensor spoofing, or counter-surveillance indicators.
-4. **Consensus Aggregator:** Calculates composite confidence metric. If confidence $\ge 0.75$, the correlated event is flagged for human operator review.
-
----
-
-## 10. Multi-Sensor Fusion & JDL Model
-
-The platform implements the standard US Joint Directors of Laboratories (JDL) multi-sensor fusion model:
-
-| Level | JDL Designation | Implementation Mechanism | Validation Status |
-| :--- | :--- | :--- | :--- |
-| **Level 0** | Sub-Object Data Assessment | Signal conditioning, coordinate normalization to WGS84, sensor confidence weighting. | `VALIDATED` |
-| **Level 1** | Object Assessment | Kinematic state estimation, spatial association, track-to-track correlation. | `VALIDATED` |
-| **Level 2** | Situation Assessment | Aggregation of tactical tracks into force clusters, distance matrices, tactical relationship graphs. | `EXPERIMENTAL` |
-| **Level 3** | Impact Assessment | Proximity to critical defense infrastructure, threat vector projection, defensive readiness scoring. | `EXPERIMENTAL` |
-| **Level 4** | Process Refinement | Sensor feedback allocation, dynamic tasking adjustments. | `EXPERIMENTAL` |
-
----
-
-## 11. OSINT Capabilities & Anti-Fingerprinting
-
-### 11.1 Harvesting & Scrapers
-- Ingests feeds from RSS, public Telegram channels, Twitter/X scrapers, and Web sources.
-- **SSRF Defense:** Complete RFC IP validation prevents targeted probing of internal IP spaces (loopback, private subnets, link-local, carrier-grade NAT, metadata servers).
-
-### 11.2 Anti-Fingerprinting (Experimental)
-- Uses randomized user-agents, request rate jittering, and configurable proxy chains (Tor/SOCKS5).
-- *Limitation:* Does not guarantee immunity against advanced behavioral traffic analysis or TLS fingerprinting (JA3/JA4) by hostile networks.
-
----
-
-## 12. Computer Vision & Satellite Analytics
-
-- **Imagery Formats:** GeoTIFF, Sentinel-2 multispectral bands, standard JPEG/PNG optical imagery.
-- **Processing Capabilities:** Automatic tiling, NDVI vegetation index calculation, bounding-box object localization (vessels, vehicles, aircraft).
-- **Execution Mode:** Experimental prototype utilizing OpenCV and lightweight inference backends.
-
----
-
-## 13. Mobile / Tactical Architecture & Duress Mode
-
-### 13.1 Tactical Mobile Client (Flutter)
-- **Screens Implemented:** Login, Duress Mode, Common Operating Picture (COP), Intel Feed, C2 Mission Management, Agent Consensus, and Satellite Tasking.
-- **Communication Protocol:** Encrypted HTTPS REST and WebSocket links with tactical token authentication.
-
-### 13.2 Duress Protocol
-- Dedicated duress PIN/credential input.
-- When triggered:
-  1. Displays an innocuous civilian decoy dashboard to the operator.
-  2. Silently transmits an emergency duress alert with GPS location and cryptographic signature to command HQ.
-  3. Purges local cached secrets and offline intelligence tokens from the device keystore.
-
----
-
-## 14. Offline / Degraded Operations
-
-- **Tactical Caching:** SQLite / Hive encrypted local storage on mobile and local SQLite fallback on edge nodes.
-- **Sync Protocol:** Vector-clock based eventual consistency reconciles local operational changes when network connectivity to HQ is reestablished.
-- **Network Degradation:** Seamless transition to read-only local COP when latency exceeds 3000ms or packet loss exceeds 50%.
-
----
-
-## 15. Event Bus & Message Routing
-
-- **Primary Bus:** Redis Pub/Sub for low-latency tactical event broadcasting.
-- **Tactical Topics:**
-  * `intel:ingest` (New raw intelligence feeds)
-  * `fusion:track:update` (JDL correlated track coordinates)
-  * `c2:alert` (High-priority threat triggers)
-  * `audit:event` (Append-only audit records)
-- **Fallback:** In-memory `asyncio.Queue` event bus for standalone and unit-test execution environments.
-
----
-
-## 16. Database Integrity & Migrations
-
-- **Database Engine:** PostgreSQL 15+ with PostGIS 3.3.
-- **Migration Engine:** Alembic migration scripts located in `backend/alembic`.
-- **Integrity Constraints:** Foreign key cascading restrictions prevent orphaned tactical tracks; unique constraint on audit log hash sequence numbers guarantees linear chain continuity.
-
----
-
-## 17. Containerization & Deployment
-
-- **Containerization Engine:** Docker with multi-stage builds.
-- **Compose Profiles:**
-  * `docker-compose.yml`: Core backend services, PostgreSQL/PostGIS, Redis, Web UI.
-  * `docker-compose.override.yml`: Local development overrides with hot reload.
-- **Security:** Containers run as non-root user (`appuser:appgroup`); read-only root filesystems where applicable.
-
----
-
-## 18. CI/CD & Automated Verification
-
-- **Validation Engine:** `scripts/validate_all.py`
-- **Execution Command:** `python scripts/validate_all.py` (Exit code 0 on success, non-zero on failure).
-- **Verification Stages:**
-  1. Full Pytest test suite execution.
-  2. Static audit of security invariants (encryption at rest, token isolation, production config validators).
-  3. Generation of machine-readable validation artifact (`reports/validation.json`).
-
----
-
-## 19. Observability & Metrics
-
-- **Metrics Engine:** Prometheus metrics exporter endpoint at `/metrics`.
-- **Traces:** OpenTelemetry instrumentation hooks for end-to-end request tracing.
-- **Log Formatting:** Structured JSON logging with standardized fields (`timestamp`, `level`, `component`, `trace_id`, `message`).
-
----
-
-## 20. Testing Strategy & Coverage
-
-The testing suite was expanded and verified under Python 3.14 / pytest 9.0:
-
-```
-============================= test session starts =============================
-platform win32 -- Python 3.14.6, pytest-9.0.3, pluggy-1.6.0
-collected 35 items
-
-backend/tests/test_audit_persistence.py::TestAuditChainPersistence ... PASSED (3/3)
-backend/tests/test_auth.py::TestAuth ... PASSED (7/7)
-backend/tests/test_clearance_enforcement.py::TestClearanceEnforcement ... PASSED (5/5)
-backend/tests/test_e2e_intelligence_cycle.py::TestE2EIntelligenceCycle ... PASSED (1/1)
-backend/tests/test_intel_api.py::TestIntelAPI ... PASSED (3/3)
-backend/tests/test_mfa_security.py::TestMFASecurity ... PASSED (3/3)
-backend/tests/test_rate_limit.py::TestRateLimit ... PASSED (2/2)
-backend/tests/test_ssrf.py::TestSSRF ... PASSED (9/9)
-backend/tests/test_terrain.py::TestTerrain ... PASSED (2/2)
-
-============================= 35 passed in 7.51s ==============================
+```bash
+cd backend
+SECRET_KEY="test-secret-key-32-chars-minimum!!!" python3 -c "import app.main; print('OK')"
 ```
 
-### Test Scope Breakdown
-* **Audit Persistence:** Verifies SHA-256 linear chain continuity, detects single-bit tampering, and verifies parallel write concurrency locking.
-* **MFA Cryptographic Security:** Proves secrets are encrypted at rest with AES-GCM and proves MFA challenge tokens cannot access protected endpoints.
-* **Clearance ABAC Matrix:** Tests the complete 5x5 clearance matrix ensuring no unauthorized intelligence leakage across clearance boundaries.
-* **SSRF Prevention:** Validates blocking of loopback, private RFC1918, CGNAT, link-local, cloud metadata, DNS rebinding, and directory traversal.
-* **End-to-End Intelligence Cycle:** Validates complete lifecycle from authentication, sensor ingestion, CV analysis, JDL fusion, operator clearance check, to human review.
+Resultado: `OK` (la app se construye; `app.openapi()` funciona).
+
+### 3.2 Suite de tests
+
+Comando:
+
+```bash
+SECRET_KEY="test-secret-key-32-chars-minimum!!!" python3 -m pytest backend/tests -q
+```
+
+Resultado literal (cola):
+
+```text
+157 passed, 1906 warnings in 15.19s
+```
+
+Exit code: `0`.
+
+### 3.3 Distribución de tests
+
+| Archivo | Tests | Estado |
+| :--- | ---: | :--- |
+| `test_security_core.py` | 34 | PASS |
+| `test_ssrf.py` | 18 | PASS |
+| `test_web_tools_core.py` | 15 | PASS |
+| `test_mfa_core.py` | 14 | PASS |
+| `test_vision_ssrf.py` | 10 | PASS |
+| `test_rate_limit_hardening.py` | 7 | PASS |
+| `test_auth.py` | 7 | PASS |
+| `test_crypto_quantum.py` | 6 | PASS |
+| `test_rate_limit.py` | 6 | PASS |
+| `test_v1_clearance_matrix.py` | 5 | PASS |
+| `test_clearance_enforcement.py` | 5 | PASS |
+| `test_contracts.py` | 5 | PASS |
+| `test_vision_yolo_integrity.py` | 5 | PASS |
+| `test_audit_persistence.py` | 3 | PASS |
+| `test_audit_unified.py` | 3 | PASS |
+| `test_mfa_security.py` | 3 | PASS |
+| `test_events_dlq.py` | 3 | PASS |
+| `test_intel_api.py` | 3 | PASS |
+| `test_login_lockout.py` | 2 | PASS |
+| `test_terrain.py` | 2 | PASS |
+| `test_e2e_intelligence_cycle.py` | 1 | PASS |
+| **Total** | **157** | **PASS** |
+
+Comando de conteo:
+
+```bash
+SECRET_KEY="test-secret-key-32-chars-minimum!!!" python3 -m pytest backend/tests --collect-only -q | tail -1
+# 157 tests collected
+```
+
+### 3.4 Warnings relevantes
+
+La suite emite 1906 warnings. Los más importantes:
+
+| Warning | Frecuencia | Impacto |
+| :--- | :--- | :--- |
+| `MFA_CHALLENGE_SECRET no esta configurado; el ticket MFA usa SECRET_KEY como fallback` | Varios tests | Debilita el aislamiento del ticket |
+| `pytest_asyncio` deprecación de `asyncio.get_event_loop_policy` | Global | Deuda de mantenimiento |
+| Avisos de Pydantic/SQLAlchemy | Varios | Ruido, no fallo |
+
+No se usa `-W error`; un warning crítico podría pasar desapercibido. Ver R-008.
+
+### 3.5 Validación global
+
+Comando:
+
+```bash
+python3 scripts/validate_all.py
+```
+
+Resultado:
+
+```text
+[2/3] Auditing critical security invariants in codebase...
+[PASS] MFA secrets encrypted with AES-256-GCM.
+[PASS] MFA challenge tickets strictly isolated from access tokens.
+[PASS] Production fail-fast hardening validator active.
+[PASS] Audit chain concurrency lock and valid DB models active.
+
+[3/3] Generating machine-readable validation report...
+Validation report saved to: reports/validation.json
+Overall Status: VALIDATED
+```
+
+Exit code: `0`.
+
+Contenido de `reports/validation.json` (resumen):
+
+```json
+{
+  "commit": "3152f117596bc4d5abc4fbd46a4035d1e43e5c7e",
+  "build": true,
+  "tests": {"passed": 157, "failed": 0},
+  "security": {"critical": 0, "high": 0, "medium": 0, "low": 0},
+  "status": "VALIDATED"
+}
+```
+
+> Matiz: el campo `security` del reporte es un resumen del gate, no una auditoría adversarial completa. No debe citarse como "0 vulnerabilidades". La auditoría formal está en `.factory/SECURITY_AUDIT.md` y sigue su curso.
+
+### 3.6 Contrato
+
+```bash
+python3 - <<'EOF'
+import json
+d = json.load(open('backend/contracts/openapi.json'))
+print("paths", len(d['paths']))
+print("ops", sum(len([m for m in o if m in ('get','post','put','patch','delete')]) for o in d['paths'].values()))
+EOF
+```
+
+Resultado:
+
+```text
+paths 168
+ops 177
+```
+
+Desglose: `/api/v1` 129 paths / 134 ops; `/api/v2` 27 / 31; `/api/v3` 11 / 11; `/` 1 / 1.
+
+Tests de contrato: `test_contracts.py` 5 PASS.
+
+### 3.7 Introspección de rutas
+
+```bash
+cd backend
+SECRET_KEY="test-secret-key-32-chars-minimum!!!" python3 - <<'EOF'
+from app.main import app
+routes = [r for r in app.routes if hasattr(r, "methods")]
+print("routes", len(routes))
+print("unique paths", len({r.path for r in routes}))
+print("media", any("media" in r.path for r in routes))
+EOF
+```
+
+Resultado: 184 objetos ruta, 173 paths únicos, `media False`.
+
+### 3.8 Cobertura
+
+Medición con `pytest-cov` sobre las suites de seguridad:
+
+```bash
+python3 -m pytest backend/tests -q \
+  --cov=backend/app/core/security.py \
+  --cov=backend/app/services/intel/auth/mfa.py \
+  --cov=backend/app/services/osint/tools/web_tools.py \
+  --cov=backend/app/core/audit.py \
+  --cov=backend/app/core/rate_limit.py \
+  --cov=backend/app/core/crypto_quantum.py \
+  --cov-report=term
+```
+
+| Módulo | Cobertura |
+| :--- | ---: |
+| `app/services/intel/auth/mfa.py` | 99% |
+| `app/core/security.py` | 97% |
+| `app/services/osint/tools/web_tools.py` | 87% |
+| `app/core/audit.py` | 87% |
+| `app/core/rate_limit.py` | 82% |
+| `app/core/crypto_quantum.py` | 62% |
+| **6 módulos de seguridad** | **88%** |
+| **Backend completo** | **≈73%** (sin umbral 80%) |
+
+Estado: `VERIFICADO` para **security suites** (88% en 6 módulos). AC-22 se refiere a las suites de seguridad; la cobertura del **backend completo no está medida al 80%** (reproducción agregada ≈73%) y queda como mejora separada.
 
 ---
 
-## 21. Performance Benchmarks & Scalability
+## 4. Frontend
 
-Empirical benchmarks run on local test environment (Windows 11, Intel Core i7, 32GB RAM):
-- **Cryptographic Audit Log Insertion:** ~1,850 events/sec with SHA-256 hash chaining and async lock.
-- **JDL Level 0/1 Association:** 50 concurrent kinematic entities fused and associated in < 12ms.
-- **Token Verification & ABAC Evaluation:** < 0.8ms per HTTP request under local Redis cache.
+### 4.1 Evidencia disponible
+
+| Elemento | Valor |
+| :--- | :--- |
+| Archivos `.ts/.tsx` | 45 |
+| LOC | 8.487 |
+| Rutas de página | `/`, `/login`, `/maven` + `/_not-found` |
+| Componentes COP | 24 |
+| Primitivas UI | 7 |
+| Stores | 3 |
+| Tokens | `--color-*` en `globals.css` |
+
+### 4.2 Build verificado
+
+Copia limpia del `frontend/` del repo con Node 20.18:
+
+```bash
+rsync -a frontend/ /tmp/opencode/fe_verify/
+cd /tmp/opencode/fe_verify
+npm ci
+npx tsc --noEmit
+npm run build
+npm audit --omit=dev --audit-level=high
+```
+
+Resultado:
+
+- `npm ci`: OK.
+- `tsc --noEmit`: **0 errores**.
+- `next build`: **OK**, 4 rutas (`/`, `/_not-found`, `/login`, `/maven`).
+- `npm audit --omit=dev --audit-level=high`: **found 0 vulnerabilities**.
+
+### 4.3 Estado actual
+
+- Next 16.4.6 + React 19 aplicado y **verificado** en copia.
+- Residual: advisory dev de `brace-expansion` vía eslint (no producción).
+- No hay tests de componentes ni E2E.
+
+### 4.4 Riesgos
+
+- Advisory dev de `brace-expansion` (eslint), no afecta al bundle de producción.
+- No hay tests de componentes ni E2E.
+- El demo usa `NEXT_PUBLIC_API_URL=https://localhost/api/v1`; el cliente añade `/api/v1` en algunas llamadas. Riesgo de doble prefijo (R-014).
 
 ---
 
-## 22. Real Limitations & Unsupported Claims
+## 5. Móvil
 
-1. **Hardware & Radio Ingestion:** The platform does not directly interface with SDR (Software Defined Radio) or classified military datalinks (Link 16, Link 22). It accepts structured JSON/REST representations of radar/AIS tracks.
-2. **Quantum Resistance:** There are **no post-quantum cryptographic primitives (PQC)** implemented. Claims of "quantum-safe" in original marketing are invalid. Standard classical cryptography (AES-256-GCM, Argon2id, SHA-256) is utilized.
-3. **Autonomous Lethality:** The platform **strictly excludes** autonomous kinetic engagement or weapon control. All actions are advisory and require human-in-the-loop validation.
+### 5.1 Comando
+
+```bash
+cd mobile/sesis_cop
+flutter analyze
+flutter test
+```
+
+Flutter 3.24.5 portable sobre copia en `/tmp`.
+
+### 5.2 Resultado literal
+
+```text
+Analyzing sesis_cop...
+No issues found! (ran in 18.6s)
+
+00:02 +11: All tests passed!
+```
+
+Exit code: `0`.
+
+### 5.3 Correcciones aplicadas
+
+| Elemento | Antes | Ahora |
+| :--- | :--- | :--- |
+| Cola offline | `core/storage/offline_queue.dart` no existía | Implementada (138 LOC) |
+| Tema | `CardThemeData` | `CardTheme` |
+| Tests | Sin carpeta `test/` | `test/mesh_protocol_test.dart` (11 tests) |
+| Analyze | Estado previo: bloqueado | Estado actual: 0 errores |
+| Pubspec | Lock desalineado | Alineado con Flutter 3.24.5 |
+
+### 5.4 Tests
+
+```bash
+cd mobile/sesis_cop && flutter test
+# 00:02 +11: All tests passed!
+```
+
+AC-25: **VERIFICADO**. Quedan pendientes mesh en dispositivos reales, duress y tests de pantallas.
+
+### 5.5 Efecto colateral
+
+`flutter analyze` ejecutó `pub get` y alineó `pubspec.lock`. No se dejaron cambios accidentales de dependencias: el lockfile forma parte de la corrección.
 
 ---
 
-## 23. Known Risks & Recommended Next Steps
+## 6. Infraestructura
 
-1. **Air-Gap Weight Distribution:** Deploy a local artifact registry for YOLOv8 and ML model weights so air-gapped deployments do not depend on external downloads.
-2. **Formal Certification:** For sovereign defense or government deployments, complete formal evaluations against ENS (Esquema Nacional de Seguridad) categoría ALTA and Common Criteria EAL4+.
-3. **Database Partitioning:** For production deployments exceeding 100 million sensor events, implement TimescaleDB or PostgreSQL native declarative table partitioning by timestamp.
+### 6.1 Validación estática
+
+```bash
+python3 - <<'EOF'
+import yaml
+d = yaml.safe_load(open('docker-compose.yml'))
+print(len(d['services']), sum(1 for s in d['services'].values() if s.get('healthcheck')))
+EOF
+```
+
+Resultado: `12 12`.
+
+Servicios: postgres, redis, nats, neo4j, api, nginx, celery-worker, ollama, frontend, alertmanager, prometheus, grafana.
+
+### 6.2 Runtime
+
+```bash
+which docker
+# (sin salida)
+docker --version
+# zsh: command not found: docker
+```
+
+Estado: `BLOQUEADO`. No se ejecutó:
+
+- `docker compose config`
+- `docker compose up -d --build`
+- `docker compose ps`
+- `curl` contra servicios
+- `nginx -t`
+- `alembic upgrade head`
+
+### 6.3 Consecuencia
+
+No hay evidencia de que el sistema arranque. La configuración es plausible y está bien estructurada, pero **no está probada**.
 
 ---
 
-## 24. Claim Verification Table
+## 7. Observabilidad
 
-| Original Repository Claim | Evaluated Reality | Verified Status | Engineering Assessment |
-| :--- | :--- | :--- | :--- |
-| *"Military-grade C2 Defense Platform"* | Prototype software stack implementing defense intelligence patterns (JDL, ABAC, STANAG). | `EXPERIMENTAL` | Downgraded from marketing claim to technical reference prototype. |
-| *"Quantum-Safe Zero-Trust Architecture"* | Standard classical cryptography (AES-256-GCM, Argon2, SHA-256). | `UNSUPPORTED` | Removed claim. No post-quantum cryptographic algorithms exist in codebase. |
-| *"Fully Autonomous Swarm Intelligence"* | Rule-based and weighted consensus multi-agent coordination with human review. | `EXPERIMENTAL` | Validated as heuristic multi-agent decision support system. |
-| *"STANAG 4774/4778 Compliant Metadata"* | XML/JSON metadata tags reflecting security classification and releasability. | `PARTIAL` | Validated as compatible data schema; formal NATO certification not performed. |
-| *"ENS ALTA Certified"* | Architecture incorporates technical requirements (ABAC, MFA, encrypted audit). | `PARTIAL` | Formal ENS certification requires organizational audit and accredited infrastructure. |
-| *"Tamper-Proof Audit Logging"* | Append-only SHA-256 hash chaining with async concurrency lock and DB storage. | `VALIDATED` | Verified by automated tamper detection and concurrency tests. |
-| *"Two-Factor Authentication (MFA)"* | RFC 6238 TOTP with AES-256-GCM encrypted secret storage and single-use challenge tokens. | `VALIDATED` | Plaintext vulnerability fully remediated and validated by test suite. |
-| *"Zero SSRF Vulnerability"* | Multi-layer IP denylist blocking private, carrier, metadata, and loopback addresses. | `VALIDATED` | Verified against extensive SSRF test suite. |
+### 7.1 Código
+
+| Elemento | Verificación | Estado |
+| :--- | :--- | :--- |
+| `/metrics` | definido en `main.py` (prometheus_client) | VERIFICADO (código + TestClient) |
+| Métricas | 7 familias en `metrics.py` (incluye `sesis_security_fail_open_total`) | VERIFICADO (código) |
+| Middleware | instrumenta status/latencia | VERIFICADO (código) |
+| Dashboards | 7 JSON válidos, 56 paneles | VERIFICADO (JSON) |
+| Alertas | 8 reglas | VERIFICADO (YAML) |
+| Datasource | `uid: prometheus` | VERIFICADO (YAML) |
+
+### 7.2 Runtime
+
+No ejecutado. No hay scrape real, no hay series en Prometheus, no hay notificación en Alertmanager, no hay dashboard renderizado.
+
+### 7.3 Corrección de cifra
+
+TASKS/TRANSFORMATION decían "9 alertas". El archivo tiene 8:
+
+```bash
+grep -c "alert:" infra/alertmanager/alerts.yml
+# Frontend en copia limpia
+rsync -a frontend/ /tmp/opencode/fe_verify/ && cd /tmp/opencode/fe_verify
+npm ci && npx tsc --noEmit && npm run build && npm audit --omit=dev --audit-level=high
+# 8
+```
+
+Se documenta 8.
 
 ---
 
-## 25. Technical Sign-Off
+## 8. Seguridad
 
-* **Evaluator:** Autonomous Engineering & Security Agent
-* **Evaluation Framework:** Empirical Code Analysis, Threat Modeling & Automated Test Execution
-* **Overall Build Status:** `PASS`
-* **Test Suite Result:** 35 passed, 0 failed, 0 warnings
-* **Security Invariant Score:** 100% Invariants Satisfied (0 Critical, 0 High, 0 Medium, 0 Low)
-* **Global System Classification:**  
-  $$\mathbf{EXPERIMENTAL\ /\ REFERENCE\ IMPLEMENTATION}$$  
-  $$\mathbf{(NO\ APTO\ PARA\ PRODUCCI\acute{O}N\ CR\acute{I}TICA\ SIN\ CERTIFICACI\acute{O}N\ ADICIONAL)}$$
+### 8.1 Suites ejecutadas
 
-*Signed on 2026-09-25.*
+| Suite | Tests | Resultado |
+| :--- | ---: | :--- |
+| Núcleo de seguridad (`test_security_core.py`) | 34 | PASS |
+| SSRF + visión SSRF | 28 | PASS |
+| Herramientas web (`test_web_tools_core.py`) | 15 | PASS |
+| MFA (`test_mfa_core.py`) | 14 | PASS |
+| Rate limit hardening + base | 13 | PASS |
+| Auth | 7 | PASS |
+| Crypto quantum | 6 | PASS |
+| Clearance | 10 | PASS |
+| Auditoría | 6 | PASS |
+| Lockout login | 2 | PASS |
+| DLQ | 3 | PASS |
+| Integridad YOLO | 5 | PASS |
+
+La suite completa es **157 passed**. Las categorías de esta tabla no son excluyentes: `test_security_core.py` cubre varios dominios a la vez.
+
+### 8.2 Invariantes de `validate_all.py`
+
+| Invariante | Resultado |
+| :--- | :--- |
+| Secretos MFA cifrados AES-256-GCM | PASS |
+| Tickets MFA aislados de access tokens | PASS |
+| Validador de producción fail-fast | PASS |
+| Lock de auditoría + modelos DB | PASS |
+
+### 8.3 SEC-FIX aplicados
+
+| ID | Estado | Evidencia |
+| :--- | :--- | :--- |
+| SEC-FIX-001 | CORREGIDO | `SECURITY_FAIL_MODE` closed en staging/prod; 503 fail-closed en rate limit y `is_jti_revoked`; abort de arranque sin Redis; métrica `sesis_security_fail_open_total` |
+| SEC-FIX-002 | CORREGIDO | SSRF en descarga de visión |
+| SEC-FIX-003 | CORREGIDO | Credenciales y defaults |
+| SEC-FIX-004 | CORREGIDO | `resolve_client_ip` + `TRUSTED_PROXIES`; bucket por `sub` |
+| SEC-FIX-005 | CORREGIDO | Lockout Redis path-aware en `/api/v1/auth/login`, 429 + `Retry-After`, auditoría persistente |
+| SEC-FIX-006 | PARCIAL | Pins actualizados; torch/ultralytics fuera del runtime base; pin sha256 YOLO; CI con `pip-audit` + `npm audit` bloqueantes y allowlist; `pip-audit` → 0 |
+| SEC-FIX-007 | ABIERTO (MEDIUM) | En auditoría adversarial |
+| SEC-FIX-008 | ABIERTO (MEDIUM) | En auditoría adversarial |
+
+### 8.4 SCA y dependencias
+
+- `pip-audit` con `docs/security/SCA_ALLOWLIST.md` → **0 vulnerabilidades**.
+- Advisories de Starlette aceptadas con allowlist y plan de upgrade a FastAPI ≥ 0.165.
+- Frontend: Next 16.4.6 + React 19 verificado en copia (tsc 0, build OK, 4 rutas); `npm audit --omit=dev` → 0 vulnerabilidades prod. Residual dev: `brace-expansion` (eslint).
+- `python-jose 3.5.0`, `python-multipart 0.0.34`, `cryptography 50.0.2`, `lxml 6.1.3`, `passlib 1.7.4` (1.9.3 no existe en PyPI).
+
+### 8.5 Lo que **no** se puede afirmar
+
+- No se puede afirmar "0 vulnerabilidades" en sentido absoluto: hay allowlist y advisories aceptadas.
+- No se puede afirmar "MFA operativo": los routers OSINT/Intel siguen sin montar.
+- No se puede afirmar "SSRF cerrado en producción": se probó el wrapper, no todos los clientes HTTP.
+- No se puede afirmar "auditoría inmutable": hay hash chain, no WORM.
+- No se puede afirmar "rate limit distribuido real": los tests usan dobles.
+
+### 8.6 Hallazgos abiertos
+
+1. SEC-FIX-007 (MEDIUM).
+2. SEC-FIX-008 (MEDIUM).
+3. MFA OSINT/Intel no montado.
+4. `MFA_CHALLENGE_SECRET` fallback.
+5. `/metrics` sin auth.
+6. Lock de auditoría no distribuido.
+7. Sin mTLS.
+8. Uploads latentes.
+9. Advisory dev de `brace-expansion` (eslint, no producción).
+
+---
+
+## 9. Matriz de aceptación (resumen)
+
+| AC | Estado | Evidencia |
+| :--- | :--- | :--- |
+| AC-01..AC-07 | VERIFICADO | `docs/audit/*`, `docs/architecture/*` |
+| AC-08 | VERIFICADO | 1 tabla `users` |
+| AC-09 | VERIFICADO | 5 + 5 tests, 141 rutas, 0 gaps |
+| AC-10 | VERIFICADO | fail-closed L42/L54 |
+| AC-11 | VERIFICADO | 6 tests rate limit |
+| AC-12 | VERIFICADO | `grep -c X-XSS` = 0 |
+| AC-13 | VERIFICADO | `migrations/archived/` |
+| AC-14 | VERIFICADO | cert local |
+| AC-15 | VERIFICADO | `fernet.key` |
+| AC-16 | VERIFICADO | `location = /healthz` |
+| AC-17 | VERIFICADO | `scripts/archived/guardian/` |
+| AC-18 | PARCIAL | credenciales fuertes en código; staging no desplegado |
+| AC-19 | VERIFICADO | pinning + 28 tests |
+| AC-20 | VERIFICADO | 6 tests de auditoría |
+| AC-21 | VERIFICADO | label honesto |
+| AC-22 | VERIFICADO (security suites) | 157 tests; 88% en 6 módulos; backend completo ≈73%, no al 80% |
+| AC-23 | PARCIAL | dashboards estáticos |
+| AC-24 | PARCIAL | alertas estáticas |
+| AC-25 | VERIFICADO | 0 errores; 11 tests |
+| AC-26 | EN CURSO | docs regenerados; falta TASK-046 |
+
+**Totales:** 22 VERIFICADO, 3 PARCIAL, 0 FALLA, 1 EN CURSO.
+
+---
+
+## 10. Bloqueos y dependencias externas
+
+| Bloqueo | Qué impide | Cómo desbloquear |
+| :--- | :--- | :--- |
+| Docker ausente | Validar compose, healthchecks, red, TLS, migraciones | Instalar Docker en host/CI |
+| PostgreSQL ausente | Migraciones, PostGIS, pgvector, queries reales | Levantar `postgres` |
+| Redis ausente | Rate limit distribuido, revocación real | Levantar `redis` |
+| NATS ausente | DLQ real, idempotencia entre procesos | Levantar `nats` |
+| Neo4j ausente | Grafo real | Levantar `neo4j` |
+| Node local ausente | Reproducir build en PATH local | Usar copia Node 20.18 (`/tmp/opencode/fe_verify`) |
+| Ollama/modelo ausente | LLM real | Descargar modelo |
+| Claves externas | OSINT/LLM/satélite reales | Configurar claves |
+| SEC-FIX-007/008 | Cierre de auditoría adversarial | Remediar y verificar |
+| Advisories Starlette | 0 CVE con allowlist | Plan FastAPI ≥ 0.165 |
+
+---
+
+## 11. Regresiones y correcciones durante la validación
+
+| Momento | Acción | Motivo |
+| :--- | :--- | :--- |
+| `flutter analyze` | 0 errores, 11 tests | Flutter 3.24.5 + `offline_queue.dart` |
+| Medición de tests | 157 | Nuevas suites de seguridad + móvil |
+| Cobertura | 88% en 6 módulos de seguridad; ≈73% backend completo | `pytest-cov` |
+| Medición de alertas | 8, no 9 | Conteo real del archivo |
+| Medición de intel | `v1/intel.py` montado | Corrección de la creencia previa |
+
+Ninguna de estas correcciones altera código de producto; sólo documentación y restauración de un lockfile.
+
+---
+
+## 12. Recomendaciones de cierre
+
+### 12.1 Antes de declarar FASE 9 cerrada
+
+1. Ejecutar TASK-046 (coherencia docs↔código).
+2. Confirmar que los 8 documentos citan las mismas cifras.
+3. Añadir el reporte de `wc -l` con el total (> 5.000).
+4. Actualizar `TASKS.md` y `TRANSFORMATION_PROGRESS.md` (fuera del alcance de este documento).
+
+### 12.2 Antes de release
+
+1. Montar o despublicar OSINT/Intel/Satellite/Agents.
+2. Montar o retirar MFA.
+3. Validar Docker + migraciones + observabilidad.
+4. Cerrar SEC-FIX-007/008.
+5. Fijar cobertura del backend completo (hoy ≈73%, sin umbral 80%).
+6. Plan de upgrade FastAPI ≥ 0.165 (Starlette).
+7. Restringir `/metrics`.
+8. Cerrar la auditoría adversarial formal.
+
+---
+
+## 13. Firmas y responsabilidades
+
+| Rol | Responsabilidad | Estado |
+| :--- | :--- | :--- |
+| `@architect` | Documentación y arquitectura | Documentos regenerados |
+| `@builder` | Implementación | Móvil, Next 16 y SEC-FIX-001/004/005 cerrados; pendiente stubs y persistencia |
+| `@qa-verifier` | Ejecución de tests | 157 passed; 88% seguridad; móvil 11 tests |
+| `@ui-artisan` | Calidad visual | No ejecutado en esta fase |
+| `@redteam-auditor` | Auditoría adversarial | En curso (no cerrar sin informe) |
+| Orquestador | Gate final | **NO APROBADO** |
+
+---
+
+## 14. Conclusión
+
+La validación demuestra tres cosas:
+
+1. **El núcleo backend funciona y está probado** en lo que el entorno permite: 157 tests, contrato, seguridad, validación global.
+2. **La periferia sigue incompleta**: OSINT/Intel/Satellite son stubs, MFA no está montado, Docker no se ha ejecutado; el móvil ya compila y pasa 11 tests.
+3. **La documentación anterior no reflejaba ninguna de las dos cosas con precisión.** Este reporte y los siete documentos que lo acompañan lo corrigen.
+
+Un release hoy sería una promesa sin evidencia. El camino a un release real está en §12.2 y es acotado: móvil, stubs, cobertura, Docker, dependencias. Nada de eso requiere reescribir la arquitectura; requiere terminar lo empezado y probarlo.
+
+**Veredicto:** `NO APROBADO PARA PRODUCCIÓN` — `FASE 9 DOCUMENTAL COMPLETA`, `PRODUCTO PARCIAL`.

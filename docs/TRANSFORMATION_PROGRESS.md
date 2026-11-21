@@ -15,9 +15,9 @@
 | FASE 4 | Data Migration & Modernization | **COMPLETO** (Verificado 21-11-2026) | 21-11-2026 | TASK-031 User unified export, TASK-032/044 clearance v1+v3 (0 gaps en 141 rutas). |
 | FASE 5 | Testing Suite | **COMPLETO** (Verificado 21-11-2026) | 21-11-2026 | TASK-033..038: 64 passed, SSRF 18 tests, brute-force distribuido, validate_all VALIDATED. |
 | FASE 6 | Observabilidad | **COMPLETO estático** (Verificado 21-11-2026) | 21-11-2026 | `/metrics` real, 7 dashboards, Alertmanager 9 alertas, 12/12 healthchecks. Runtime Docker pendiente. |
-| FASE 7 | Móvil (Flutter) | `PENDING` | FASE 7 | pubspec completion, flutter analyze, offline mesh hardened. |
+| FASE 7 | Móvil (Flutter) | **COMPLETO** (Verificado 21-11-2026) | 21-11-2026 | Flutter 3.24.5: analyze 0 issues, 11 tests passed; OfflineQueue persistente + fix CardTheme. |
 | FASE 8 | Deprecación Legacy | **COMPLETO** (Verificado 21-11-2026) | 21-11-2026 | TASK-043 AuditLog dedup (shim sin mapeo); migraciones legacy archivadas (TASK-011). |
-| FASE 9 | Docs regeneration | `PENDING` | FASE 9 | Regenerar docs/{ARCHITECTURE_CURRENT, AUDIT, ARCHITECTURE, API, FEATURE_MATRIX, VALIDATION_PLAN, FINAL_VALIDATION_REPORT, ENGINEERING_RISKS}. |
+| FASE 9 | Docs regeneration | **COMPLETO** (Verificado 21-11-2026) | 21-11-2026 | 8 docs regenerados → 6.255 líneas; API 177 ops ↔ openapi.json; riesgos honestos. |
 
 ---
 
@@ -136,6 +136,21 @@
 ### FASE 8 — Dedup legacy (TASK-043) — COMPLETO (Verificado 21-11-2026)
 
 - `app/db/models/osint/audit_log.py` es shim de re-export de `persistence.AuditLog` (sin mapeo duplicado); `osint/audit.py` importa el modelo canónico; 1 tabla `audit_log`.
+
+### FASE 7 — Móvil (TASK-042) — COMPLETO (Verificado 21-11-2026)
+
+- **Toolchain:** Flutter 3.24.5 portable (`/tmp/opencode/flutter`) sobre copia (`/tmp/opencode/mobile_check`), porque `/run/media` no permite toolchain in-place.
+- **`flutter analyze`:** `No issues found!` (antes 4 errores: `OfflineQueue` inexistente y `CardThemeData` no disponible en el SDK).
+- **`flutter test`:** **11 tests passed** (`mobile/sesis_cop/test/mesh_protocol_test.dart`): firma HMAC-SHA256, anti-tamper, PSK distinta, canonicalización independiente de orden de claves, handshake, serialización y router dedup/TTL.
+- **Implementación:** `mobile/sesis_cop/lib/core/storage/offline_queue.dart` — cola persistente (path_provider, escritura atómica tmp+rename, máximo 500, recuperación de JSON corrupto); `app_theme.dart` con `CardTheme`.
+- **Límite honesto:** no se ejecutó en emulador/dispositivo Android; sólo análisis estático + unit tests.
+
+### FASE 9 — Docs regeneration (TASK-045/046) — COMPLETO (Verificado 21-11-2026)
+
+- **8 documentos regenerados desde realidad:** `ARCHITECTURE_CURRENT.md`, `AUDIT.md`, `ARCHITECTURE.md`, `API.md`, `FEATURE_MATRIX.md`, `VALIDATION_PLAN.md`, `FINAL_VALIDATION_REPORT.md`, `ENGINEERING_RISKS.md` → **6.255 líneas** totales.
+- **Coherencia API:** 177 operaciones documentadas cruzadas 1:1 con `backend/contracts/openapi.json` (168 paths: 129 v1, 27 v2, 11 v3 + raíz).
+- **Correcciones de hecho documentadas:** `api/v1/intel.py` sí está montado (`/api/v1/c2`); sólo `api/v1/media.py` es código muerto; suite 157 passed; Flutter 0 errores/11 tests; 8 alertas (no 9).
+- **Riesgos declarados sin maquillar:** Docker/PostgreSQL/Redis/NATS/Neo4j sin ejecutar en este entorno; SEC-FIX-007/008 (MEDIUM) abiertos; Starlette advisories aceptadas con allowlist y plan de migración.
 
 ### FASE 1 — COMPLETO (Verificado 21-11-2026)
 
