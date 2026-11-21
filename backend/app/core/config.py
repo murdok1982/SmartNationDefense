@@ -58,6 +58,8 @@ class Settings(BaseSettings):
     # "closed" aborta el arranque si Redis no responde y devuelve 503 cuando un
     # control (rate-limit, revocación de JWT) no puede consultar su estado.
     SECURITY_FAIL_MODE: str = Field(default="", pattern="^(open|closed)?$")
+    # Token opcional para /metrics (si se define, Prometheus debe enviarlo).
+    METRICS_TOKEN: str = Field(default="")
     # Peers autorizados a aportar X-Real-IP/X-Forwarded-For (proxy inverso).
     TRUSTED_PROXIES: str = Field(
         default="127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"

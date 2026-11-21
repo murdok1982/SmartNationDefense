@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import JSONResponse, Response
 
 from app.core.config import settings, get_settings
 from app.core.metrics import (
@@ -84,6 +84,9 @@ app = FastAPI(
     description="Plataforma Unificada de Gobierno Digital Militar — C4ISR",
     version="1.0.0",
     lifespan=lifespan,
+    docs_url=None if settings.ENVIRONMENT == "production" else "/docs",
+    redoc_url=None if settings.ENVIRONMENT == "production" else "/redoc",
+    openapi_url=None if settings.ENVIRONMENT == "production" else "/openapi.json",
 )
 
 # Middleware
@@ -144,7 +147,16 @@ async def prometheus_metrics_middleware(request: Request, call_next):
 
 
 @app.get("/metrics", include_in_schema=False)
-async def prometheus_metrics():
+async def prometheus_metrics(request: Request):
+    expected = getattr(settings, "METRICS_TOKEN", "") or ""
+    if expected:
+        provided = request.headers.get("X-Metrics-Token", "")
+        if not provided:
+            auth = request.headers.get("Authorization", "")
+            provided = auth.removeprefix("Bearer ").strip()
+        import hmac as _hmac
+        if not _hmac.compare_digest(provided, expected):
+            return JSONResponse({"detail": "No autorizado"}, status_code=401)
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
