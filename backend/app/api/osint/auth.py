@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import Annotated
@@ -28,6 +29,8 @@ from app.core.security import (
     decode_mfa_token,
     decode_token,
     hash_password,
+    is_jti_revoked,
+    revoke_jti,
     verify_password,
 )
 from app.services.intel.auth.mfa import totp_service
@@ -109,14 +112,12 @@ class UserResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Brute-force protection (in-memory stub)
+# Brute-force protection (Redis ZSET sliding window, distribuido)
 # ---------------------------------------------------------------------------
 
 
 class _BruteForceProtector:
     def __init__(self):
-        self._failures: dict[str, list[tuple[str, float]]] = {}
-        self._lockouts: dict[str, float] = {}
         self.MAX_ATTEMPTS = 5
         self.WINDOW = 300
 
@@ -126,59 +127,45 @@ class _BruteForceProtector:
             r = await get_redis_pool()
             if await r.exists(f"lockout:{username}"):
                 return True
+            if await r.zcard(f"bf_attempts:{username}") >= self.MAX_ATTEMPTS:
+                await r.setex(f"lockout:{username}", self.WINDOW * 2, "1")
+                return True
         except Exception:
             pass
-        expiry = self._lockouts.get(username, 0)
-        return bool(expiry and expiry > datetime.now(timezone.utc).timestamp())
+        return False
 
     async def get_remaining_attempts(self, username: str) -> int:
         try:
             from app.db.redis_pool import get_redis_pool
             r = await get_redis_pool()
-            val = await r.get(f"attempts:{username}")
-            if val:
-                val_int = int(val.decode() if isinstance(val, (bytes, bytearray)) else val)
-                return max(0, self.MAX_ATTEMPTS - val_int)
+            cnt = await r.zcard(f"bf_attempts:{username}")
+            return max(0, self.MAX_ATTEMPTS - cnt)
         except Exception:
-            pass
-        now = datetime.now(timezone.utc).timestamp()
-        attempts = [
-            t for _, t in self._failures.get(username, [])
-            if now - t < self.WINDOW
-        ]
-        return max(0, self.MAX_ATTEMPTS - len(attempts))
+            return self.MAX_ATTEMPTS
 
     async def record_failure(self, username: str, ip: str) -> None:
         now = datetime.now(timezone.utc).timestamp()
         try:
             from app.db.redis_pool import get_redis_pool
             r = await get_redis_pool()
-            key = f"attempts:{username}"
-            cnt = await r.incr(key)
-            if cnt == 1:
-                await r.expire(key, self.WINDOW)
+            key = f"bf_attempts:{username}"
+            member = str(time.time_ns())
+            await r.zadd(key, {member: now})
+            await r.zremrangebyscore(key, "-inf", now - self.WINDOW)
+            cnt = await r.zcard(key)
             if cnt >= self.MAX_ATTEMPTS:
-                await r.setex(f"lockout:{username}", self.WINDOW, "1")
+                await r.setex(f"lockout:{username}", self.WINDOW * 2, "1")
         except Exception:
             pass
-        self._failures.setdefault(username, []).append((ip, now))
-        self._failures[username] = [
-            (ip, t) for _, t in self._failures[username]
-            if now - t < self.WINDOW
-        ]
-        if len(self._failures[username]) >= self.MAX_ATTEMPTS:
-            self._lockouts[username] = now + self.WINDOW
 
     async def record_success(self, username: str, ip: str) -> None:
         try:
             from app.db.redis_pool import get_redis_pool
             r = await get_redis_pool()
-            await r.delete(f"attempts:{username}")
+            await r.delete(f"bf_attempts:{username}")
             await r.delete(f"lockout:{username}")
         except Exception:
             pass
-        self._failures.pop(username, None)
-        self._lockouts.pop(username, None)
 
 
 BruteForceProtector = _BruteForceProtector()
@@ -193,21 +180,40 @@ def _issue_mfa_ticket(user_id: str, **kw: object) -> str:
     return create_mfa_challenge_token(user_id)
 
 
+async def is_mfa_ticket_used(jti: str | None) -> bool:
+    if not jti:
+        return False
+    try:
+        from app.db.redis_pool import get_redis_pool
+        r = await get_redis_pool()
+        return bool(await r.exists(f"mfa_ticket_used:{jti}"))
+    except Exception:
+        return False
+
+
+async def _mark_mfa_ticket_used(jti: str, exp: int) -> None:
+    try:
+        from app.db.redis_pool import get_redis_pool
+        r = await get_redis_pool()
+        ttl = max(1, int(exp) - int(datetime.now(timezone.utc).timestamp()))
+        await r.setex(f"mfa_ticket_used:{jti}", ttl, "1")
+        await revoke_jti(jti, exp)
+    except Exception:
+        pass
+
+
 async def _verify_mfa_ticket(ticket: str) -> dict:
     payload = decode_mfa_token(ticket)
     jti = payload.get("jti")
     if jti:
         try:
-            from app.db.redis_pool import get_redis_pool
-            r = await get_redis_pool()
-            if await r.exists(f"used_mfa_ticket:{jti}"):
+            if await is_mfa_ticket_used(jti) or await is_jti_revoked(jti):
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="MFA ticket already used or expired",
+                    detail="MFA challenge ya consumido o revocado",
                 )
             exp = payload.get("exp", 0)
-            ttl = max(1, int(exp) - int(datetime.now(timezone.utc).timestamp()))
-            await r.setex(f"used_mfa_ticket:{jti}", ttl, "1")
+            await _mark_mfa_ticket_used(jti, exp)
         except HTTPException:
             raise
         except Exception:

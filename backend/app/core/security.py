@@ -3,6 +3,7 @@ import hashlib
 import logging
 import time
 import uuid
+import warnings
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional, List, Tuple
 
@@ -71,6 +72,12 @@ def create_mfa_challenge_token(
         "iss": settings.JWT_ISSUER,
     })
     secret = getattr(settings, "MFA_CHALLENGE_SECRET", "") or settings.SECRET_KEY
+    if not getattr(settings, "MFA_CHALLENGE_SECRET", ""):
+        warnings.warn(
+            "MFA_CHALLENGE_SECRET no esta configurado; el ticket MFA usa SECRET_KEY como fallback "
+            "(debilita el aislamiento del ticket)",
+            stacklevel=2,
+        )
     return jwt.encode(to_encode, secret, algorithm="HS256")
 
 
@@ -89,6 +96,12 @@ def decode_mfa_token(token: str) -> dict:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid token type: expected mfa_challenge",
+            )
+        header_getter = getattr(jwt, "get_unverified_header", None)
+        if header_getter is not None and header_getter(token).get("alg") != "HS256":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="MFA challenge token con algoritmo invalido",
             )
         return payload
     except JWTError:
@@ -169,6 +182,8 @@ async def get_current_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
     token = credentials.credentials
     payload = decode_token(token)
+    if payload.get("type") in ("mfa_challenge", "challenge"):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token type")
     if payload.get("type") != "access":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token type")
     if await is_jti_revoked(payload.get("jti")):
