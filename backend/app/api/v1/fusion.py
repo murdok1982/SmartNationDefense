@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from typing import Dict, Any, List
 from pydantic import BaseModel
 
 from app.services.fusion.jdl_fusion import jdl_fusion_engine
+from app.core.security import require_clearance
 
 router = APIRouter()
 
@@ -25,7 +26,10 @@ class CTPRequest(BaseModel):
 
 
 @router.post("/assess-threats")
-async def assess_threats(request: ThreatAssessmentRequest):
+async def assess_threats(
+    request: ThreatAssessmentRequest,
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     result = await jdl_fusion_engine.assess_threats(request.events)
     return {
         "threat_level": result.threat_level,
@@ -85,7 +89,10 @@ async def assess_threats(request: ThreatAssessmentRequest):
 
 
 @router.post("/relationships")
-async def identify_relationships(request: RelationshipRequest):
+async def identify_relationships(
+    request: RelationshipRequest,
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     result = await jdl_fusion_engine.identify_relationships(request.entities)
     return {
         "nodes": [
@@ -112,7 +119,10 @@ async def identify_relationships(request: RelationshipRequest):
 
 
 @router.post("/intentions")
-async def evaluate_intentions(request: IntentionRequest):
+async def evaluate_intentions(
+    request: IntentionRequest,
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     results = await jdl_fusion_engine.evaluate_intentions(request.enemy_units)
     return [
         {
@@ -127,7 +137,10 @@ async def evaluate_intentions(request: IntentionRequest):
 
 
 @router.post("/ctp")
-async def generate_ctp(request: CTPRequest):
+async def generate_ctp(
+    request: CTPRequest,
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     result = await jdl_fusion_engine.generate_ctp(request.events)
     return {
         "generated_at": result.generated_at,

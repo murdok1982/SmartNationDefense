@@ -18,6 +18,7 @@ from app.db.session import get_db
 from app.db.models.persistence import Alert, Event, AuditLog
 from app.services.military_brain import military_brain
 from app.services.policy import PolicyEvaluator
+from app.core.security import require_clearance
 
 logger = logging.getLogger("sesis.api.brain")
 
@@ -161,6 +162,7 @@ async def _log_audit(
 @router.get("/status", summary="LLM model status")
 async def brain_status(
     _operator: dict = Depends(require_confidential_clearance),
+    principal: dict = Depends(require_clearance("RESTRICTED")),
 ) -> dict[str, Any]:
     """Return operational status of the ARES LLM backend."""
     return await military_brain.get_status()
@@ -172,6 +174,7 @@ async def brain_query(
     request: Request,
     operator: dict = Depends(require_confidential_clearance),
     db: AsyncSession = Depends(get_db),
+    principal: dict = Depends(require_clearance("RESTRICTED")),
 ) -> dict[str, Any]:
     """
     Send a free-form prompt to the ARES military AI brain.
@@ -201,6 +204,7 @@ async def analyze_threat(
     request: Request,
     operator: dict = Depends(require_confidential_clearance),
     db: AsyncSession = Depends(get_db),
+    principal: dict = Depends(require_clearance("RESTRICTED")),
 ) -> dict[str, Any]:
     """
     Full threat analysis: produces SITREP, INTSUM, COA options, and risk assessment.
@@ -229,6 +233,7 @@ async def generate_coa(
     request: Request,
     operator: dict = Depends(require_confidential_clearance),
     db: AsyncSession = Depends(get_db),
+    principal: dict = Depends(require_clearance("RESTRICTED")),
 ) -> dict[str, Any]:
     """
     Apply NATO MDMP to generate Courses of Action for a given operational situation.
@@ -259,6 +264,7 @@ async def strategic_briefing(
     request: Request,
     operator: dict = Depends(require_confidential_clearance),
     db: AsyncSession = Depends(get_db),
+    principal: dict = Depends(require_clearance("RESTRICTED")),
 ) -> dict[str, Any]:
     """
     Pull the last N events and alerts from the database and generate

@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from typing import Dict, Any, List
 from pydantic import BaseModel
 
 from app.services.mapping.tactical_map import tactical_map_service
+from app.core.security import require_clearance
 
 router = APIRouter()
 
@@ -40,22 +41,31 @@ class CommRangeRequest(BaseModel):
 
 
 @router.get("/layers")
-async def get_layers():
+async def get_layers(principal: dict = Depends(require_clearance("RESTRICTED"))):
     return await tactical_map_service.get_layers()
 
 
 @router.post("/overlay")
-async def add_overlay(request: OverlayRequest):
+async def add_overlay(
+    request: OverlayRequest,
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     return await tactical_map_service.add_overlay(request.model_dump())
 
 
 @router.get("/overlay")
-async def get_overlays(layer_type: str = None):
+async def get_overlays(
+    layer_type: str = None,
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     return await tactical_map_service.get_overlays(layer_type=layer_type)
 
 
 @router.delete("/overlay/{overlay_id}")
-async def remove_overlay(overlay_id: str):
+async def remove_overlay(
+    overlay_id: str,
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     success = await tactical_map_service.remove_overlay(overlay_id)
     if not success:
         from fastapi import HTTPException
@@ -64,7 +74,10 @@ async def remove_overlay(overlay_id: str):
 
 
 @router.post("/track")
-async def track_unit(request: UnitTrackRequest):
+async def track_unit(
+    request: UnitTrackRequest,
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     return await tactical_map_service.track_unit(request.model_dump())
 
 
@@ -74,6 +87,7 @@ async def get_unit_history(
     start_time: str = None,
     end_time: str = None,
     limit: int = 100,
+    principal: dict = Depends(require_clearance("RESTRICTED")),
 ):
     return await tactical_map_service.get_unit_history(
         unit_id=unit_id,
@@ -84,7 +98,10 @@ async def get_unit_history(
 
 
 @router.post("/engagement-zone")
-async def calculate_engagement_zone(request: EngagementZoneRequest):
+async def calculate_engagement_zone(
+    request: EngagementZoneRequest,
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     return await tactical_map_service.calculate_engagement_zone(
         unit_location=request.unit_location,
         weapon_system=request.weapon_system,
@@ -92,7 +109,10 @@ async def calculate_engagement_zone(request: EngagementZoneRequest):
 
 
 @router.post("/comm-range")
-async def calculate_comm_range(request: CommRangeRequest):
+async def calculate_comm_range(
+    request: CommRangeRequest,
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     return await tactical_map_service.calculate_comm_range(
         transmitter_location=request.transmitter_location,
         comm_system=request.comm_system,
@@ -101,5 +121,5 @@ async def calculate_comm_range(request: CommRangeRequest):
 
 
 @router.get("/state")
-async def get_map_state():
+async def get_map_state(principal: dict = Depends(require_clearance("RESTRICTED"))):
     return await tactical_map_service.get_map_state()

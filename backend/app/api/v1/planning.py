@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from typing import Dict, Any, List
 from pydantic import BaseModel
 
 from app.services.planning.opord_enhanced import enhanced_opord_service
+from app.core.security import require_clearance
 
 router = APIRouter()
 
@@ -37,12 +38,18 @@ class COAComparisonRequest(BaseModel):
 
 
 @router.post("/create")
-async def create_opord(request: CreateOPORDRequest):
+async def create_opord(
+    request: CreateOPORDRequest,
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     return await enhanced_opord_service.create_opord(request.model_dump())
 
 
 @router.get("/{opord_id}")
-async def get_opord(opord_id: str):
+async def get_opord(
+    opord_id: str,
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     opord = await enhanced_opord_service.get_opord(opord_id)
     if not opord:
         raise HTTPException(status_code=404, detail="OPORD no encontrada")
@@ -50,7 +57,12 @@ async def get_opord(opord_id: str):
 
 
 @router.put("/{opord_id}/paragraph/{paragraph}")
-async def update_paragraph(opord_id: str, paragraph: str, request: UpdateParagraphRequest):
+async def update_paragraph(
+    opord_id: str,
+    paragraph: str,
+    request: UpdateParagraphRequest,
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     try:
         return await enhanced_opord_service.update_paragraph(opord_id, paragraph, request.data)
     except ValueError as e:
@@ -58,7 +70,11 @@ async def update_paragraph(opord_id: str, paragraph: str, request: UpdateParagra
 
 
 @router.post("/{opord_id}/annex")
-async def add_annex(opord_id: str, request: AnnexRequest):
+async def add_annex(
+    opord_id: str,
+    request: AnnexRequest,
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     try:
         return await enhanced_opord_service.add_annex(opord_id, request.model_dump())
     except ValueError as e:
@@ -66,7 +82,11 @@ async def add_annex(opord_id: str, request: AnnexRequest):
 
 
 @router.post("/{opord_id}/approve")
-async def approve_opord(opord_id: str, approver: str = "COMMANDER"):
+async def approve_opord(
+    opord_id: str,
+    approver: str = "COMMANDER",
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     try:
         return await enhanced_opord_service.approve_opord(opord_id, approver)
     except ValueError as e:
@@ -74,7 +94,11 @@ async def approve_opord(opord_id: str, approver: str = "COMMANDER"):
 
 
 @router.post("/{opord_id}/distribute")
-async def distribute_opord(opord_id: str, distribution_list: List[str]):
+async def distribute_opord(
+    opord_id: str,
+    distribution_list: List[str],
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     try:
         return await enhanced_opord_service.distribute_opord(opord_id, distribution_list)
     except ValueError as e:
@@ -82,7 +106,11 @@ async def distribute_opord(opord_id: str, distribution_list: List[str]):
 
 
 @router.post("/{opord_id}/fragord")
-async def generate_fragord(opord_id: str, changes: Dict[str, Any]):
+async def generate_fragord(
+    opord_id: str,
+    changes: Dict[str, Any],
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     try:
         return await enhanced_opord_service.generate_fragord(opord_id, changes)
     except ValueError as e:
@@ -90,12 +118,18 @@ async def generate_fragord(opord_id: str, changes: Dict[str, Any]):
 
 
 @router.post("/coa-compare")
-async def compare_coa(request: COAComparisonRequest):
+async def compare_coa(
+    request: COAComparisonRequest,
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     return await enhanced_opord_service.compare_coa(request.coa_list)
 
 
 @router.get("/{opord_id}/risk-assessment")
-async def risk_assessment(opord_id: str):
+async def risk_assessment(
+    opord_id: str,
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     try:
         return await enhanced_opord_service.risk_assessment(opord_id)
     except ValueError as e:
@@ -103,7 +137,10 @@ async def risk_assessment(opord_id: str):
 
 
 @router.get("/{opord_id}/sync-matrix")
-async def get_sync_matrix(opord_id: str):
+async def get_sync_matrix(
+    opord_id: str,
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     try:
         return await enhanced_opord_service.generate_sync_matrix(opord_id)
     except ValueError as e:
@@ -111,7 +148,10 @@ async def get_sync_matrix(opord_id: str):
 
 
 @router.get("/{opord_id}/validate")
-async def validate_opord(opord_id: str):
+async def validate_opord(
+    opord_id: str,
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     try:
         return await enhanced_opord_service.validate_opord(opord_id)
     except ValueError as e:

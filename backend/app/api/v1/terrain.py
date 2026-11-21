@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from typing import Dict, Any, List
 from pydantic import BaseModel
 
 from app.services.terrain.service import terrain_service
 from app.services.terrain.elevation import ElevationProviderError
+from app.core.security import require_clearance
 
 router = APIRouter()
 
@@ -47,7 +48,10 @@ def _raise_if_dem_error(exc: Exception) -> None:
 
 
 @router.post("/line-of-sight")
-async def line_of_sight(request: LOSRequest):
+async def line_of_sight(
+    request: LOSRequest,
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     try:
         return await terrain_service.line_of_sight(
             observer=request.observer,
@@ -60,7 +64,10 @@ async def line_of_sight(request: LOSRequest):
 
 
 @router.post("/route-analysis")
-async def route_analysis(request: RouteAnalysisRequest):
+async def route_analysis(
+    request: RouteAnalysisRequest,
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     try:
         return await terrain_service.route_analysis(
             start=request.start,
@@ -73,7 +80,10 @@ async def route_analysis(request: RouteAnalysisRequest):
 
 
 @router.post("/terrain-analysis")
-async def terrain_analysis(request: TerrainAnalysisRequest):
+async def terrain_analysis(
+    request: TerrainAnalysisRequest,
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     area = {
         "center_lat": request.center_lat,
         "center_lon": request.center_lon,
@@ -86,7 +96,11 @@ async def terrain_analysis(request: TerrainAnalysisRequest):
 
 
 @router.get("/elevation")
-async def get_elevation(lat: float, lon: float):
+async def get_elevation(
+    lat: float,
+    lon: float,
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     try:
         return await terrain_service.get_elevation(lat=lat, lon=lon)
     except Exception as exc:
@@ -94,7 +108,10 @@ async def get_elevation(lat: float, lon: float):
 
 
 @router.post("/obstacle-detection")
-async def detect_obstacles(request: ObstacleDetectionRequest):
+async def detect_obstacles(
+    request: ObstacleDetectionRequest,
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     area = {
         "center_lat": request.center_lat,
         "center_lon": request.center_lon,

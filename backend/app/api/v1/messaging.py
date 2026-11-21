@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional, List
 from pydantic import BaseModel
 
 from app.services.messaging.service import messaging_service
+from app.core.security import require_clearance
 
 router = APIRouter()
 
@@ -30,7 +31,11 @@ class BroadcastRequest(BaseModel):
 
 
 @router.post("/send")
-async def send_message(request: SendMessageRequest, sender_id: str = "OPERATOR"):
+async def send_message(
+    request: SendMessageRequest,
+    sender_id: str = "OPERATOR",
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     try:
         return await messaging_service.send_message(
             sender_id=sender_id,
@@ -55,6 +60,7 @@ async def get_inbox(
     offset: int = Query(0, ge=0),
     message_type: Optional[str] = None,
     priority: Optional[str] = None,
+    principal: dict = Depends(require_clearance("RESTRICTED")),
 ):
     return await messaging_service.get_inbox(
         user_id=user_id,
@@ -66,7 +72,11 @@ async def get_inbox(
 
 
 @router.post("/broadcast")
-async def broadcast_message(request: BroadcastRequest, sender_id: str = "OPERATOR"):
+async def broadcast_message(
+    request: BroadcastRequest,
+    sender_id: str = "OPERATOR",
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     try:
         return await messaging_service.broadcast(
             sender_id=sender_id,
@@ -86,6 +96,7 @@ async def get_history(
     user_id: str = "OPERATOR",
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
+    principal: dict = Depends(require_clearance("RESTRICTED")),
 ):
     return await messaging_service.get_history(
         user_id=user_id,
@@ -95,7 +106,11 @@ async def get_history(
 
 
 @router.put("/{message_id}/ack")
-async def acknowledge_message(message_id: str, user_id: str = "OPERATOR"):
+async def acknowledge_message(
+    message_id: str,
+    user_id: str = "OPERATOR",
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     try:
         return await messaging_service.acknowledge(message_id, user_id)
     except ValueError as e:
@@ -103,7 +118,10 @@ async def acknowledge_message(message_id: str, user_id: str = "OPERATOR"):
 
 
 @router.delete("/{message_id}")
-async def delete_message(message_id: str):
+async def delete_message(
+    message_id: str,
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     success = await messaging_service.delete_message(message_id)
     if not success:
         raise HTTPException(status_code=404, detail="Mensaje no encontrado")

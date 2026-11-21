@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel
 
 from app.services.logistics.service import logistics_service
+from app.core.security import require_clearance
 
 router = APIRouter()
 
@@ -73,6 +74,7 @@ async def get_supplies(
     supply_type: Optional[str] = None,
     location_id: Optional[str] = None,
     status: Optional[str] = None,
+    principal: dict = Depends(require_clearance("RESTRICTED")),
 ):
     return await logistics_service.get_supplies(
         supply_type=supply_type,
@@ -82,22 +84,31 @@ async def get_supplies(
 
 
 @router.post("/request")
-async def request_supply(request: SupplyRequest):
+async def request_supply(
+    request: SupplyRequest,
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     return await logistics_service.request_supply(request.model_dump())
 
 
 @router.post("/delivery")
-async def register_delivery(request: DeliveryRequest):
+async def register_delivery(
+    request: DeliveryRequest,
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     return await logistics_service.register_delivery(request.model_dump())
 
 
 @router.get("/status")
-async def get_supply_status():
+async def get_supply_status(principal: dict = Depends(require_clearance("RESTRICTED"))):
     return await logistics_service.get_supply_status()
 
 
 @router.post("/medevac")
-async def create_medevac(request: MEDEVACRequest):
+async def create_medevac(
+    request: MEDEVACRequest,
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     return await logistics_service.create_medevac(request.model_dump())
 
 
@@ -105,6 +116,7 @@ async def create_medevac(request: MEDEVACRequest):
 async def get_personnel(
     unit_id: Optional[str] = None,
     status: Optional[str] = None,
+    principal: dict = Depends(require_clearance("RESTRICTED")),
 ):
     return await logistics_service.get_personnel_status(
         unit_id=unit_id,
@@ -113,5 +125,8 @@ async def get_personnel(
 
 
 @router.post("/maintenance")
-async def report_maintenance(request: MaintenanceRequest):
+async def report_maintenance(
+    request: MaintenanceRequest,
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     return await logistics_service.report_maintenance(request.model_dump())

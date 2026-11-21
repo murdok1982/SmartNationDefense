@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 from app.db.session import async_session_factory
 from app.services.prediction.threat_prediction import threat_prediction_service
+from app.core.security import require_clearance
 
 router = APIRouter()
 
@@ -39,7 +40,10 @@ class EarlyWarningRequest(BaseModel):
 
 
 @router.post("/predict-movement")
-async def predict_movement(request: PredictMovementRequest):
+async def predict_movement(
+    request: PredictMovementRequest,
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     return await threat_prediction_service.predict_movement(
         unit_data=request.model_dump(),
         time_horizon_min=request.time_horizon_min,
@@ -47,17 +51,26 @@ async def predict_movement(request: PredictMovementRequest):
 
 
 @router.post("/detect-anomalies")
-async def detect_anomalies(request: AnomalyDetectionRequest):
+async def detect_anomalies(
+    request: AnomalyDetectionRequest,
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     return await threat_prediction_service.detect_anomalies(request.events)
 
 
 @router.post("/pattern-of-life")
-async def analyze_pattern_of_life(request: PatternOfLifeRequest):
+async def analyze_pattern_of_life(
+    request: PatternOfLifeRequest,
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     return await threat_prediction_service.analyze_pattern_of_life(request.unit_id)
 
 
 @router.post("/early-warning")
-async def early_warning(request: EarlyWarningRequest):
+async def early_warning(
+    request: EarlyWarningRequest,
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     return await threat_prediction_service.early_warning(
         friendly_locations=request.friendly_locations,
         threat_radius_km=request.threat_radius_km,
@@ -69,6 +82,7 @@ async def threat_trend(
     window_hours: int = 24,
     buckets: int = 6,
     db: AsyncSession = Depends(get_db),
+    principal: dict = Depends(require_clearance("RESTRICTED")),
 ):
     if not (1 <= window_hours <= 24 * 30):
         raise HTTPException(status_code=400, detail="window_hours fuera de rango (1-720)")

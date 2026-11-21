@@ -22,6 +22,7 @@ from app.core.config import settings
 from app.db.session import get_db
 from app.db.models.persistence import AuditLog, Event, SensorSource
 from app.services.intel_fusion import IntelFusionService
+from app.core.security import require_clearance
 
 logger = logging.getLogger("sesis.api.sensors")
 
@@ -251,6 +252,7 @@ async def _upsert_sensor_source(
 async def sensors_status(
     operator: dict = Depends(require_operator_key),
     db: AsyncSession = Depends(get_db),
+    principal: dict = Depends(require_clearance("RESTRICTED")),
 ) -> list[dict[str, Any]]:
     """Return all sensor sources and their last activity."""
     operator_level = CLEARANCE_ORDER.get(operator.get("clearance", "OPEN"), 0)
@@ -280,6 +282,7 @@ async def ingest_humint(
     request: Request,
     operator: dict = Depends(require_operator_key),
     db: AsyncSession = Depends(get_db),
+    principal: dict = Depends(require_clearance("RESTRICTED")),
 ) -> dict[str, Any]:
     """
     Ingest a HUMINT SALUTE format report from a field operator.
@@ -327,6 +330,7 @@ async def ingest_satellite(
     request: Request,
     operator: dict = Depends(require_operator_key),
     db: AsyncSession = Depends(get_db),
+    principal: dict = Depends(require_clearance("RESTRICTED")),
 ) -> dict[str, Any]:
     """
     Register a satellite intelligence product (SAR, optical, multispectral,
@@ -374,6 +378,7 @@ async def ingest_sigint(
     request: Request,
     operator: dict = Depends(require_operator_key),
     db: AsyncSession = Depends(get_db),
+    principal: dict = Depends(require_clearance("RESTRICTED")),
 ) -> dict[str, Any]:
     """Ingest a SIGINT report and correlate with known emitters."""
     event_id = str(uuid.uuid4())
@@ -438,6 +443,7 @@ async def ingest_cyber_alert(
     request: Request,
     operator: dict = Depends(require_operator_key),
     db: AsyncSession = Depends(get_db),
+    principal: dict = Depends(require_clearance("RESTRICTED")),
 ) -> dict[str, Any]:
     """
     Ingest a cyber intelligence alert (intrusion, APT, malware, etc.).
@@ -504,6 +510,7 @@ async def ingest_osint(
     request: Request,
     operator: dict = Depends(require_operator_key),
     db: AsyncSession = Depends(get_db),
+    principal: dict = Depends(require_clearance("RESTRICTED")),
 ) -> dict[str, Any]:
     """
     Ingest an open-source intelligence report. Entity extraction and

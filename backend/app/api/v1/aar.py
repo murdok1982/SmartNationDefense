@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from typing import Dict, Any, List
 from pydantic import BaseModel
 
 from app.services.aar.service import aar_service
+from app.core.security import require_clearance
 
 router = APIRouter()
 
@@ -47,12 +48,18 @@ class FinalizeRequest(BaseModel):
 
 
 @router.post("/create")
-async def create_aar(request: CreateAARRequest):
+async def create_aar(
+    request: CreateAARRequest,
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     return await aar_service.create_aar(request.model_dump())
 
 
 @router.get("/{aar_id}")
-async def get_aar(aar_id: str):
+async def get_aar(
+    aar_id: str,
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     aar = await aar_service.get_aar(aar_id)
     if not aar:
         raise HTTPException(status_code=404, detail="AAR no encontrada")
@@ -60,7 +67,11 @@ async def get_aar(aar_id: str):
 
 
 @router.post("/{aar_id}/timeline")
-async def add_timeline_event(aar_id: str, request: TimelineEventRequest):
+async def add_timeline_event(
+    aar_id: str,
+    request: TimelineEventRequest,
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     try:
         return await aar_service.add_timeline_event(aar_id, request.model_dump())
     except ValueError as e:
@@ -68,7 +79,11 @@ async def add_timeline_event(aar_id: str, request: TimelineEventRequest):
 
 
 @router.post("/{aar_id}/lessons")
-async def add_lesson_learned(aar_id: str, request: LessonLearnedRequest):
+async def add_lesson_learned(
+    aar_id: str,
+    request: LessonLearnedRequest,
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     try:
         return await aar_service.add_lesson_learned(aar_id, request.model_dump())
     except ValueError as e:
@@ -76,7 +91,10 @@ async def add_lesson_learned(aar_id: str, request: LessonLearnedRequest):
 
 
 @router.get("/{aar_id}/replay")
-async def get_replay(aar_id: str):
+async def get_replay(
+    aar_id: str,
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     try:
         return await aar_service.get_replay(aar_id)
     except ValueError as e:
@@ -84,7 +102,11 @@ async def get_replay(aar_id: str):
 
 
 @router.post("/{aar_id}/finalize")
-async def finalize_aar(aar_id: str, request: FinalizeRequest):
+async def finalize_aar(
+    aar_id: str,
+    request: FinalizeRequest,
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     try:
         return await aar_service.finalize_aar(aar_id, request.model_dump())
     except ValueError as e:

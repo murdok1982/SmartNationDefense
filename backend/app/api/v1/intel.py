@@ -18,6 +18,7 @@ from app.core.config import settings
 from app.db.session import get_db
 from app.db.models.persistence import AuditLog, IntelligenceProduct, PriorityIntelligenceRequirement
 from app.services.intel_fusion import IntelFusionService
+from app.core.security import require_clearance
 
 logger = logging.getLogger("sesis.api.intel")
 
@@ -119,6 +120,7 @@ async def fuse_intel(
     request: Request,
     operator: dict = Depends(require_restricted_clearance),
     db: AsyncSession = Depends(get_db),
+    principal: dict = Depends(require_clearance("RESTRICTED")),
 ) -> dict[str, Any]:
     """
     Accept raw intelligence events from any INT source and return a
@@ -150,6 +152,7 @@ async def list_products(
     limit: int = Query(default=20, ge=1, le=100),
     operator: dict = Depends(require_restricted_clearance),
     db: AsyncSession = Depends(get_db),
+    principal: dict = Depends(require_clearance("RESTRICTED")),
 ) -> list[dict[str, Any]]:
     """List intelligence products, optionally filtered by type and classification."""
     stmt = select(IntelligenceProduct).order_by(desc(IntelligenceProduct.created_at)).limit(limit)
@@ -185,6 +188,7 @@ async def get_product(
     product_id: str,
     operator: dict = Depends(require_restricted_clearance),
     db: AsyncSession = Depends(get_db),
+    principal: dict = Depends(require_clearance("RESTRICTED")),
 ) -> dict[str, Any]:
     """Retrieve full content of a specific intelligence product."""
     result = await db.execute(
@@ -219,6 +223,7 @@ async def create_product(
     request: Request,
     operator: dict = Depends(require_restricted_clearance),
     db: AsyncSession = Depends(get_db),
+    principal: dict = Depends(require_clearance("RESTRICTED")),
 ) -> dict[str, Any]:
     """Generate and persist a formal intelligence product (INTSUM, SITREP, etc.)."""
     service = IntelFusionService(db)
@@ -243,6 +248,7 @@ async def create_pir(
     request: Request,
     operator: dict = Depends(require_restricted_clearance),
     db: AsyncSession = Depends(get_db),
+    principal: dict = Depends(require_clearance("RESTRICTED")),
 ) -> dict[str, Any]:
     """Register a new Priority Intelligence Requirement (PIR)."""
     pir_id = str(uuid.uuid4())
@@ -287,6 +293,7 @@ async def list_pirs(
     active_only: bool = Query(default=True),
     operator: dict = Depends(require_restricted_clearance),
     db: AsyncSession = Depends(get_db),
+    principal: dict = Depends(require_clearance("RESTRICTED")),
 ) -> list[dict[str, Any]]:
     """List Priority Intelligence Requirements ordered by priority."""
     stmt = select(PriorityIntelligenceRequirement).order_by(
@@ -325,6 +332,7 @@ async def deactivate_pir(
     pir_id: str,
     operator: dict = Depends(require_restricted_clearance),
     db: AsyncSession = Depends(get_db),
+    principal: dict = Depends(require_clearance("RESTRICTED")),
 ) -> None:
     """Mark a PIR as inactive (soft delete)."""
     result = await db.execute(

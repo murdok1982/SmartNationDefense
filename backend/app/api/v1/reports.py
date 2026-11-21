@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel
 
 from app.services.reports.service import reports_service
+from app.core.security import require_clearance
 
 router = APIRouter()
 
@@ -84,27 +85,42 @@ class MEDEVACReportRequest(BaseModel):
 
 
 @router.post("/sitrep")
-async def generate_sitrep(request: SITREPRequest):
+async def generate_sitrep(
+    request: SITREPRequest,
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     return await reports_service.generate_sitrep(request.model_dump())
 
 
 @router.post("/spotrep")
-async def generate_spotrep(request: SPOTREPRequest):
+async def generate_spotrep(
+    request: SPOTREPRequest,
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     return await reports_service.generate_spotrep(request.model_dump())
 
 
 @router.post("/salute")
-async def generate_salute(request: SALUTERequest):
+async def generate_salute(
+    request: SALUTERequest,
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     return await reports_service.generate_salute(request.model_dump())
 
 
 @router.post("/medevac")
-async def generate_medevac_report(request: MEDEVACReportRequest):
+async def generate_medevac_report(
+    request: MEDEVACReportRequest,
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     return await reports_service.generate_medevac_report(request.model_dump())
 
 
 @router.get("/{report_id}")
-async def get_report(report_id: str):
+async def get_report(
+    report_id: str,
+    principal: dict = Depends(require_clearance("RESTRICTED")),
+):
     report = await reports_service.get_report(report_id)
     if not report:
         raise HTTPException(status_code=404, detail="Reporte no encontrado")
@@ -116,6 +132,7 @@ async def list_reports(
     report_type: Optional[str] = None,
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
+    principal: dict = Depends(require_clearance("RESTRICTED")),
 ):
     return await reports_service.list_reports(
         report_type=report_type,

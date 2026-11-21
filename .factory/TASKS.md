@@ -85,12 +85,12 @@
   - **Verification:** `alembic upgrade head && pytest backend/tests/test_clearance_enforcement.py`
   - **Retries:** `0/3`
 
-- [ ] **TASK-009:** TD-003 — Uniformizar `require_clearance` enforcement en routers v1 (N-01, SEC-TEST-CLEARANCE-01..08).
+- [x] **TASK-009:** TD-003 — Uniformizar `require_clearance` enforcement en routers v1 (N-01, SEC-TEST-CLEARANCE-01..08). (VERIFICADO REAL: 80 handlers; 13 routers sin enforcement: aar(6), brain(5), fusion(4), intel(7), logistics(7), map(9), messaging(6), planning(11), prediction(5), reports(6), sensors(6), terrain(5), voice(3); enforcement añadido: `principal: dict = Depends(require_clearance("RESTRICTED"))`; imports+`Depends`,`require_clearance` en los 13 archivos; brain/intel/sensors reafirmados sobre deps personalizados require_confidential_clearance/require_restricted_clearance/require_operator_key; DECISION B-D3 op.1: reafirmar enforcement en más handlers donde falte enforcement explícito)
   - **Owner:** `@builder` -> `@qa-verifier`
   - **Depends On:** `TASK-008`
   - **Spec Ref:** SPEC.md §3 (AC-09)
   - **Target Files:** `app/api/v1/alerts.py`, `app/api/v1/assets.py`, `app/api/v1/intel.py`, `app/api/v1/ingestion.py`, `app/api/v1/sensors.py`, `app/api/v1/timeline.py`, `app/api/v1/brain.py`, `app/api/v1/media.py`, `app/api/v2/*.py`, `app/api/v3/*.py`
-  - **Verification:** `pytest backend/tests/test_clearance_enforcement.py`
+  - **Verification:** `pytest backend/tests/test_clearance_enforcement.py` + FULL REAL: `cd backend && python3 -m pytest tests/test_clearance_enforcement.py -q` → 5 passed; `cd backend && python3 -m pytest tests/ -q` → 35 passed (baseline 35 passed); `python3 -m py_compile` 13 archivos → OK; `grep -rnE "require_clearance\(" backend/app/api/v1/ --include=*.py | wc -l` → 89 (9 pre + 80 nuevos); `SECRET_KEY=test-secret-key-32-chars-minimum!!! python3 -c "from app.api.v1 import aar, brain, fusion, intel, logistics, map, messaging, planning, prediction, reports, sensors, terrain, voice"` → IMPORTS_OK
   - **Retries:** `0/3`
 
 - [x] **TASK-010:** TD-006 — EncryptedField fail-closed (persistence.py, telemetry, messaging). (VERIFICADO: `raise ValueError(...AES_KEY no configurado...fail-closed...)` en L42 (__get__) y L54 (__set__); cipher None → GET ValueError + SET ValueError; roundtrip AES_KEY-set OK; pytest **35 passed**; usages: Alert.sensitive @L118 etc., 0 refs en tests)
