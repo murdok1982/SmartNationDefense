@@ -142,8 +142,13 @@ class _BruteForceProtector:
             if await r.zcard(f"bf_attempts:{key}") >= self.MAX_ATTEMPTS:
                 await r.setex(f"lockout:{key}", self.WINDOW * 2, "1")
                 return True
-        except Exception:
-            pass
+        except Exception as exc:
+            # SEC-FIX-001: sin Redis no se puede demostrar que la cuenta no
+            # está bloqueada; en modo closed se deniega (el arranque ya habría
+            # abortado, pero cubre caídas posteriores).
+            if settings.security_fail_closed:
+                logger.error("BruteForce: Redis no disponible en modo closed: %s", exc)
+                return True
         return False
 
     async def get_remaining_attempts(self, username: str, path: str = "") -> int:

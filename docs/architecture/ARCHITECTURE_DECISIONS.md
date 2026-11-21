@@ -128,11 +128,13 @@
 
 ---
 
-## ADR-010 — CLEARANCE HIERARCHY en Open (DECISION — PARTIAL)
+## ADR-010 — CLEARANCE HIERARCHY en Open (DECISION — IMPLEMENTED FASE 2/4)
 
 **Contexto:** FASE 0: v1 routers no enforcement clearance.
 
 **Decisión:** Reducir leaks en v1 (fácil, FASE 2). Completar enforcement en todos backends (FASE 5).
+
+**Implementación real (21-11-2026):** `_CLEARANCE_DEPS` a nivel de router en 19 routers de `app/main.py` (RESTRICTED mínimo) + niveles CONFIDENTIAL por handler; introspección de `app.main.app` → 141 rutas v1+v3 con **0 gaps** (health/auth públicos por diseño). Regresión: `backend/tests/test_v1_clearance_matrix.py`.
 
 ---
 
