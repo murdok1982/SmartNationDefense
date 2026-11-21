@@ -117,7 +117,7 @@
   - **Verification:** `pytest backend/tests/test_rate_limit.py`
   - **Retries:** `0/3`
 
-- [ ] **TASK-013:** TD-010 — Fail-open rate limit circuit breaker.
+- [x] **TASK-013:** TD-010 — Fail-open rate limit circuit breaker. (VERIFICADO: `CircuitBreaker` L150, estados OPEN/HALF_OPEN/CLOSED (L169-170), keys `rl:state/rl:count/rl:failures`; pytest full: 40 passed; py_compile OK)
   - **Owner:** `@builder` -> `@qa-verifier`
   - **Depends On:** `TASK-012`
   - **Spec Ref:** SPEC.md §3 (AC-11)
@@ -133,7 +133,7 @@
   - **Verification:** `python -c "from app.core.config import settings; assert settings.MULTI_TENANT is False; assert settings.DEFAULT_TENANT_ID == 'default'"`
   - **Retries:** `0/3`
 
-- [ ] **TASK-015:** TD-002 — `_log_audit` pass db_session (osint/auth.py + _log_audit).
+- [x] **TASK-015:** TD-002 — `_log_audit` pass db_session (osint/auth.py + _log_audit). (VERIFICADO: `_log_audit` acepta `details` + `db_session`; 9 callers pasan `db_session=db`; pytest 49 passed)
   - **Owner:** `@builder` -> `@qa-verifier`
   - **Depends On:** `NONE`
   - **Spec Ref:** SPEC.md §3 (AC-14)
@@ -141,7 +141,7 @@
   - **Verification:** `grep -n "db_session=" backend/app/api/osint/auth.py`
   - **Retries:** `0/3`
 
-- [ ] **TASK-016:** TD-011 — Dedup AuditLog (persistence.AuditLog usado de legacy osint.audit_log, arquitectura ADR — TD-011).
+- [x] **TASK-016:** TD-011 — Dedup AuditLog (persistence.AuditLog usado de legacy osint.audit_log, arquitectura ADR — TD-011). (VERIFICADO: 3 tablas → 1 `audit_log`; osint/audit_log.py y AuditChainEntry son re-exports; migración 004_unify_audit_log; pytest 49 passed)
   - **Owner:** `@builder` -> `@qa-verifier`
   - **Depends On:** `NONE`
   - **Spec Ref:** SPEC.md §1 (AC-13)
@@ -157,7 +157,7 @@
   - **Verification:** `ls infra/ssl/ && python scripts/generate_keys.py --name fernet --output fernet.key && ls fernet.key`
   - **Retries:** `0/3`
 
-- [ ] **TASK-018:** N-08 — Dead route `/api/v1/policy` removal (app/api/v1/policy.py, v1/__init__).
+- [x] **TASK-018:** N-08 — Dead route `/api/v1/policy` removal (app/api/v1/policy.py, v1/__init__). (VERIFICADO: policy.py eliminado y `v1/__init__.py` sin policy; `grep -rn policy backend/app/main.py` → 0)
   - **Owner:** `@builder` -> `@qa-verifier`
   - **Depends On:** `NONE`
   - **Spec Ref:** SPEC.md §3 (AC-13)
@@ -165,7 +165,7 @@
   - **Verification:** `grep -rn "policy" backend/app/main.py | wc -l` + `grep -rn "policy" backend/app/api/v1/__init__.py`
   - **Retries:** `0/3`
 
-- [ ] **TASK-019:** N-09 — X-XSS-Protection deprecado: fix (X-XSS deprecado, FASE 2).
+- [x] **TASK-019:** N-09 — X-XSS-Protection deprecado: fix (X-XSS deprecado, FASE 2). (VERIFICADO: `grep -c X-XSS infra/nginx.conf` → 0)
   - **Owner:** `@builder` -> `@qa-verifier`
   - **Depends On:** `NONE`
   - **Spec Ref:** SPEC.md §3 (AC-12)
@@ -173,7 +173,7 @@
   - **Verification:** `grep -c "X-XSS" infra/nginx.conf` = 0
   - **Retries:** `0/3`
 
-- [ ] **TASK-020:** TD-013 — Guardian quarantine: scripts/archived/guardian/.
+- [x] **TASK-020:** TD-013 — Guardian quarantine: scripts/archived/guardian/. (VERIFICADO: `git mv guardian scripts/archived/guardian`)
   - **Owner:** `@builder` -> `@qa-verifier`
   - **Depends On:** `NONE`
   - **Spec Ref:** SPEC.md §1 (AC-17)
@@ -217,7 +217,7 @@
   - **Verification:** `python scripts/generate_keys.py --print-chars && python -c "from app.core.config import Settings; Settings()"` exit 0
   - **Retries:** `0/3`
 
-- [ ] **TASK-025:** TD-004 + SEC-04 — SSRF IP pinning (HIGH-03 — accepted-risk mitigation).
+- [x] **TASK-025:** TD-004 + SEC-04 — SSRF IP pinning (HIGH-03 — accepted-risk mitigation). (VERIFICADO: `_resolve_validated_ips` + `_PinnedDNS` fijan la IP validada; peer check post-conexión; 3 tests nuevos en test_ssrf.py)
   - **Owner:** `@builder` -> `@qa-verifier`
   - **Depends On:** `NONE`
   - **Spec Ref:** SPEC.md §3 (AC-19)
@@ -225,7 +225,7 @@
   - **Verification:** `pytest backend/tests/test_ssrf.py` + `grep -n "connect_ex\|pin_ip\|custom_transport" backend/app/services/osint/tools/web_tools.py`
   - **Retries:** `0/3`
 
-- [ ] **TASK-026:** TD-005 + MEDIUM-02 — crypto_quantum honest labels (Fernet → aes-128-cbc + HMAC).
+- [x] **TASK-026:** TD-005 + MEDIUM-02 — crypto_quantum honest labels (Fernet → aes-128-cbc + HMAC). (VERIFICADO: label honesto `fernet-aes128-cbc-hmac-sha256`; warning explícito 'NOT post-quantum'; pytest 49 passed)
   - **Owner:** `@builder` -> `@qa-verifier`
   - **Depends On:** `NONE`
   - **Spec Ref:** SPEC.md §3 (AC-21)
@@ -233,7 +233,7 @@
   - **Verification:** `python -c "from app.core.crypto_quantum import qcrypto; import asyncio; asyncio.run(qcrypto.encrypt(b'x', b'key'))"`
   - **Retries:** `0/3`
 
-- [ ] **TASK-027:** MEDIUM-01 — AuditChain persistence (`db_session` pass en osint/auth).
+- [x] **TASK-027:** MEDIUM-01 — AuditChain persistence (`db_session` pass en osint/auth). (VERIFICADO: `audit_chain.record(db_session=...)` persiste en `audit_log`; /audit/verify recalcula hashes; test_audit_unified.py)
   - **Owner:** `@builder` -> `@qa-verifier`
   - **Depends On:** `TASK-015`
   - **Spec Ref:** SPEC.md §3 (AC-20)
@@ -241,7 +241,7 @@
   - **Verification:** `pytest backend/tests/test_audit_persistence.py` (FASE 2 — FASE 5 verify)
   - **Retries:** `0/3`
 
-- [ ] **TASK-028:** TD-009 — NATS DLQ + idempotency keys.
+- [x] **TASK-028:** TD-009 — NATS DLQ + idempotency keys. (VERIFICADO: idempotencia `nats:idem:*` + DLQ `nats:dlq:*` + ack/nak; test_events_dlq.py 3 passed)
   - **Owner:** `@builder` -> `@qa-verifier`
   - **Depends On:** `NONE`
   - **Spec Ref:** SPEC.md §3 (AC-19)

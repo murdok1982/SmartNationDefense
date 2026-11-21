@@ -1,29 +1,12 @@
-from __future__ import annotations
+"""Modelo de auditoría — re-export del modelo canónico (TASK-016).
 
-from datetime import datetime
+Históricamente existían tres tablas de auditoría en paralelo:
+``audit_logs`` (osint), ``audit_chain`` (osint) y ``audit_log`` (persistence).
+Desde TASK-016 sólo existe la tabla canónica ``audit_log`` definida en
+``app.db.models.persistence``; este módulo mantiene el import histórico
+funcionando sin duplicar el mapeo SQLAlchemy.
+"""
 
-from sqlalchemy import JSON, Boolean, DateTime, String, Text, func
-from sqlalchemy.orm import Mapped, mapped_column
+from app.db.models.persistence import AuditLog
 
-from app.db.session import get_db
-from app.db.models.osint.base import UUIDMixin, Base
-
-class AuditLog(UUIDMixin, Base):
-    """Append-only audit trail. No updated_at — entries are immutable."""
-
-    __tablename__ = "audit_logs"
-
-    timestamp: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
-    )
-    user_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
-    username: Mapped[str] = mapped_column(String(64), default="")
-    action: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
-    resource_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
-    resource_id: Mapped[str] = mapped_column(String(128), default="")
-    details: Mapped[dict] = mapped_column(JSON, default=dict)
-    ip_address: Mapped[str] = mapped_column(String(64), default="")
-    user_agent: Mapped[str] = mapped_column(Text, default="")
-    request_id: Mapped[str] = mapped_column(String(64), default="")
-    success: Mapped[bool] = mapped_column(Boolean, default=True)
-    error_message: Mapped[str] = mapped_column(Text, default="")
+__all__ = ["AuditLog"]

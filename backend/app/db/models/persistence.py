@@ -119,6 +119,13 @@ class Alert(Base):
 
 
 class AuditLog(Base):
+    """Tabla canónica de auditoría (TASK-016): cadena de hashes + trail de seguridad.
+
+    Unifica los antiguos modelos ``osint.AuditLog`` (tabla ``audit_logs``) y
+    ``osint.AuditChainEntry`` (tabla ``audit_chain``) en una única tabla
+    ``audit_log``.
+    """
+
     __tablename__ = "audit_log"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -130,6 +137,21 @@ class AuditLog(Base):
     context = Column(JSON, default={})
     prev_hash = Column(String(64), nullable=False, default="0" * 64)
     row_hash = Column(String(64), nullable=False, default="")
+
+    # Trail de seguridad (antes en osint.AuditLog)
+    user_id = Column(String(128), nullable=True, index=True)
+    username = Column(String(64), nullable=True, default="")
+    details = Column(JSON, default={})
+    ip_address = Column(String(64), nullable=True, default="")
+    user_agent = Column(Text, nullable=True, default="")
+    request_id = Column(String(64), nullable=True, default="")
+    success = Column(Boolean, nullable=True, default=True)
+    error_message = Column(Text, nullable=True, default="")
+
+    @property
+    def timestamp(self):
+        """Alias de compatibilidad para consumidores del antiguo osint.AuditLog."""
+        return self.ts
 
 
 class IntelligenceProduct(Base):

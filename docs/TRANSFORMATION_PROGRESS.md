@@ -84,6 +84,21 @@
 | TASK-012 (TD-009 + N-06 path-blindness) | `VERIFIED` | `get_limiter_key` en rate_limit.py:132; `bf_attempts`/`lockout` keys path-aware en osint/auth.py; snippet: `is_locked login-path: False`, `is_locked mfa-path: False`; pytest 40 passed |
 | TASK-013 (TD-010 fail-open CB) | `VERIFIED` | `CircuitBreaker` L150, OPEN/HALF_OPEN/CLOSED (L169-170), keys `rl:state`/`rl:count`/`rl:failures`; report_success → CLOSED; pytest 40 passed |
 
+### FASE 3b — Auditoría persistente, DLQ, SSRF pinning y limpieza (TASK-015/016/018/019/020/025/026/027/028) — COMPLETO (Verificado 21-11-2026)
+
+| Tarea | Estado | Evidencia real |
+|---|---|---|
+| TASK-015/027 (audit `db_session`) | `VERIFIED` | `_log_audit` acepta `details` y `db_session`; 9 callers pasan `db_session=db`; la entrada se persiste en `audit_log` |
+| TASK-016 (dedup AuditLog) | `VERIFIED` | 3 tablas (`audit_logs`, `audit_chain`, `audit_log`) → 1 canónica `audit_log`; `osint/audit_log.py` y `AuditChainEntry` son re-exports; migración `004_unify_audit_log` |
+| TASK-018 (ruta muerta policy) | `VERIFIED` | `backend/app/api/v1/policy.py` eliminado; `v1/__init__.py` sin `policy` |
+| TASK-019 (X-XSS deprecado) | `VERIFIED` | `grep -c X-XSS infra/nginx.conf` → 0 |
+| TASK-020 (guardian quarantine) | `VERIFIED` | `guardian/` → `scripts/archived/guardian/` (git mv) |
+| TASK-025 (SSRF IP pinning) | `VERIFIED` | `_resolve_validated_ips` + `_PinnedDNS` (fija `socket.getaddrinfo` a la IP validada durante la petición) + verificación del peer post-conexión; 3 tests nuevos |
+| TASK-026 (labels crypto honestos) | `VERIFIED` | `algorithm: fernet-aes128-cbc-hmac-sha256`; warning "NOT post-quantum" |
+| TASK-028 (NATS DLQ + idempotencia) | `VERIFIED` | `nats:idem:*` (SETNX+TTL), DLQ `<subject>.dlq` + `nats:dlq:*`, ack/nak; `test_events_dlq.py` 3 passed |
+
+**Evidencia global:** `python3 -m pytest backend/tests -q` → **49 passed**; `python3 scripts/validate_all.py` → **VALIDATED** (49 passed / 0 failed), 4 invariantes de seguridad PASS.
+
 ### FASE 1 — COMPLETO (Verificado 21-11-2026)
 
 | Entregable | Archivo | Verificación |

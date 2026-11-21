@@ -18,17 +18,17 @@ class TokenBlacklist(BaseModel):
     revoked_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
     reason: Mapped[str | None] = mapped_column(String(256), nullable=True)
 
-class AuditChainEntry(BaseModel):
-    __tablename__ = "audit_chain"
+class AuditChainEntry:
+    """Compatibilidad histórica (TASK-016).
 
-    index: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
-    timestamp: Mapped[float] = mapped_column(Float, nullable=False)
-    action: Mapped[str] = mapped_column(String(64), nullable=False)
-    user_id: Mapped[str] = mapped_column(String(36), nullable=False)
-    resource: Mapped[str] = mapped_column(String(256), nullable=False)
-    details: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    previous_hash: Mapped[str] = mapped_column(String(256), nullable=False)
-    hash_value: Mapped[str] = mapped_column(String(256), nullable=False, index=True)
+    La tabla ``audit_chain`` fue unificada en ``audit_log``; este alias evita
+    romper imports antiguos sin duplicar el mapeo SQLAlchemy.
+    """
+
+    def __new__(cls, *args, **kwargs):
+        from app.db.models.persistence import AuditLog
+
+        return AuditLog(*args, **kwargs)
 
 class ChainOfCustodyRecord(BaseModel):
     __tablename__ = "chain_of_custody"

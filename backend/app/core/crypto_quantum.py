@@ -24,7 +24,10 @@ class QuantumSafeCrypto:
             self._dilithium_available = True
             logger.info("Quantum-safe crypto libraries available")
         except ImportError:
-            logger.warning("Quantum-safe libraries not installed, falling back to AES-256-GCM")
+            logger.warning(
+                "Quantum-safe libraries (pqcrypto) not installed — falling back to "
+                "Fernet (AES-128-CBC + HMAC-SHA256). NOT post-quantum."
+            )
 
     async def generate_keypair(self) -> dict:
         if self._kyber_available:
@@ -32,7 +35,7 @@ class QuantumSafeCrypto:
             pk, sk = pqcrypto.kem.kyber768.keypair()
             return {"public_key": pk.hex(), "private_key": sk.hex(), "algorithm": "kyber768"}
         key = Fernet.generate_key()
-        return {"key": key.decode(), "algorithm": "aes-256-gcm"}
+        return {"key": key.decode(), "algorithm": "fernet-aes128-cbc-hmac-sha256"}
 
     async def encrypt(self, data: bytes, key: bytes) -> bytes:
         if self._kyber_available:

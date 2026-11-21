@@ -67,6 +67,7 @@ class AuditChain:
                 try:
                     from app.db.models.persistence import AuditLog
                     log = AuditLog(
+                        ts=datetime.fromisoformat(entry["timestamp"]),
                         actor=actor,
                         action=event,
                         resource_type=resource.split(":")[0] if ":" in resource else resource,
@@ -74,6 +75,14 @@ class AuditChain:
                         context=details or {},
                         prev_hash=entry["previous_hash"],
                         row_hash=entry["hash"],
+                        user_id=str(actor),
+                        username=(details or {}).get("username", ""),
+                        details=details or {},
+                        ip_address=(details or {}).get("ip", ""),
+                        user_agent=(details or {}).get("user_agent", ""),
+                        request_id=(details or {}).get("request_id", ""),
+                        success=bool((details or {}).get("success", True)),
+                        error_message=(details or {}).get("error") or "",
                     )
                     db_session.add(log)
                     await db_session.commit()
@@ -103,3 +112,16 @@ class AuditChain:
 
 
 audit_chain = AuditChain()
+
+
+def iso_utc(dt) -> str:
+    """Serializa un datetime como ISO-8601 UTC.
+
+    SQLite devuelve datetimes sin tzinfo; se asume UTC para que la
+    reconstrucción del hash coincida exactamente con la entrada original.
+    """
+    if dt is None:
+        return ""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.isoformat()

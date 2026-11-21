@@ -106,18 +106,120 @@ async def is_safe_url_async(url: str) -> bool:
     return True
 
 
+async def _resolve_validated_ips(url: str) -> list[str]:
+    """Resuelve el host y valida **todas** las IPs antes de conectar.
+
+    Devuelve la lista de IPs públicas validadas que se usarán para fijar
+    (pin) la conexión y cerrar la ventana TOCTOU de DNS rebinding.
+    """
+    parsed = urlparse(url)
+    host = parsed.hostname or ""
+    if not host:
+        raise ValueError("URL blocked (SSRF protection): missing host")
+
+    try:
+        addr = ipaddress.ip_address(host)
+        if _is_blocked_ip(addr):
+            raise ValueError("URL blocked (SSRF protection): private address")
+        return [str(addr)]
+    except ValueError as exc:
+        if "blocked" in str(exc):
+            raise
+
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    try:
+        loop = asyncio.get_running_loop()
+        infos = await loop.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    except Exception as exc:
+        raise ValueError(f"URL blocked (SSRF protection): DNS resolution failed ({exc})") from exc
+
+    ips: list[str] = []
+    for info in infos:
+        try:
+            addr = ipaddress.ip_address(info[4][0])
+        except ValueError as exc:
+            raise ValueError("URL blocked (SSRF protection): invalid resolved address") from exc
+        if _is_blocked_ip(addr):
+            raise ValueError("URL blocked (SSRF protection): resolved to private address")
+        ips.append(str(addr))
+    if not ips:
+        raise ValueError("URL blocked (SSRF protection): no addresses resolved")
+    return ips
+
+
+class _PinnedDNS:
+    """Fija la resolución DNS de ``host`` a las IPs ya validadas.
+
+    Mientras el contexto está activo, cualquier resolución de ``host``
+    (incluida la que hace httpcore dentro de la petición) devuelve las IPs
+    validadas, eliminando el TOCTOU entre validación y conexión.
+    """
+
+    def __init__(self, host: str, ips: list[str]):
+        self.host = host.lower()
+        self.ips = ips
+        self._original = None
+
+    def __enter__(self):
+        self._original = socket.getaddrinfo
+        original = self._original
+        host_l = self.host
+        ips = self.ips
+
+        def pinned_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+            name = host.decode() if isinstance(host, bytes) else host
+            if isinstance(name, str) and name.lower() == host_l:
+                results = []
+                for ip in ips:
+                    if ":" in ip:
+                        results.append((socket.AF_INET6, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", (ip, port or 0, 0, 0)))
+                    else:
+                        results.append((socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", (ip, port or 0)))
+                return results
+            return original(host, port, family, type, proto, flags)
+
+        socket.getaddrinfo = pinned_getaddrinfo
+        return self
+
+    def __exit__(self, *exc_info):
+        if self._original is not None:
+            socket.getaddrinfo = self._original
+        return False
+
+
 async def safe_http_get(
     client: httpx.AsyncClient,
     url: str,
     headers: dict | None = None,
     max_redirects: int = 5,
 ) -> httpx.Response:
-    """GET con validacion SSRF en cada salto de redireccion."""
+    """GET con validación SSRF en cada salto de redirección + IP pinning.
+
+    La IP resuelta y validada se fija durante la petición (``_PinnedDNS``) para
+    impedir DNS rebinding entre la validación y la conexión real (TASK-025).
+    """
     current = url
     for _ in range(max_redirects + 1):
         if not await is_safe_url_async(current):
             raise ValueError("URL blocked (SSRF protection)")
-        resp = await client.get(current, headers=headers or _DEFAULT_HEADERS, follow_redirects=False)
+
+        pinned_ips = await _resolve_validated_ips(current)
+        host = urlparse(current).hostname or ""
+
+        with _PinnedDNS(host, pinned_ips):
+            resp = await client.get(current, headers=headers or _DEFAULT_HEADERS, follow_redirects=False)
+
+        # Defensa en profundidad: el peer real debe ser una de las IPs fijadas.
+        try:
+            stream = resp.extensions.get("network_stream")
+            server_addr = stream.get_extra_info("server_addr") if stream is not None else None
+            if server_addr and str(server_addr[0]) not in pinned_ips:
+                raise ValueError("URL blocked (SSRF protection): peer address mismatch")
+        except ValueError:
+            raise
+        except Exception:
+            pass
+
         if resp.is_redirect:
             location = resp.headers.get("location")
             if not location:

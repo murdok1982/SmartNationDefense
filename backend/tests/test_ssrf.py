@@ -73,3 +73,29 @@ class TestSSRF:
                     result = await tool.execute(file_path=str(forbidden_file))
                     assert result.success is False
                     assert "fuera del directorio" in result.error
+
+
+class TestSSRFPinning:
+    """TASK-025 — IP pinning: la conexión usa la IP validada, no una nueva resolución."""
+
+    def test_pinned_dns_returns_validated_ip(self):
+        import socket as _socket
+
+        with web_tools._PinnedDNS("evil.example.com", ["93.184.216.34"]):
+            infos = _socket.getaddrinfo("evil.example.com", 443, type=_socket.SOCK_STREAM)
+        assert infos and infos[0][4][0] == "93.184.216.34"
+
+    def test_pinned_dns_restores_resolver(self):
+        import socket as _socket
+
+        original = _socket.getaddrinfo
+        with web_tools._PinnedDNS("example.com", ["93.184.216.34"]):
+            assert _socket.getaddrinfo is not original
+        assert _socket.getaddrinfo is original
+
+    async def test_resolve_validated_ips_rejects_private_resolution(self):
+        with patch("asyncio.get_running_loop") as mock_loop:
+            fake_gai = AsyncMock(return_value=[(0, 0, 0, "", ("10.0.0.5", 443))])
+            mock_loop.return_value.getaddrinfo = fake_gai
+            with pytest.raises(ValueError, match="SSRF protection"):
+                await web_tools._resolve_validated_ips("https://internal.example.com/")

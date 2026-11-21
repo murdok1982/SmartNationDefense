@@ -51,8 +51,11 @@ class FakeRedis:
     async def get(self, key: str):
         return self._data.get(key)
 
-    async def set(self, key: str, value: str, ex: int | None = None) -> None:
+    async def set(self, key: str, value: str, ex: int | None = None, nx: bool = False) -> bool | None:
+        if nx and key in self._data:
+            return None
         self._data[key] = value
+        return True
 
     async def delete(self, key: str) -> None:
         self._data.pop(key, None)

@@ -326,12 +326,26 @@ async def _log_audit(
     ip: str,
     success: bool = True,
     error: str | None = None,
+    details: dict | None = None,
+    db_session: AsyncSession | None = None,
 ) -> None:
+    """Registra el evento en la cadena de auditoría (hash chain).
+
+    ``db_session`` es opcional: cuando se pasa, la entrada se persiste en la
+    tabla canónica ``audit_log`` (TASK-015/TASK-027). Sin sesión, la entrada
+    sólo vive en memoria (comportamiento histórico).
+    """
+    payload: dict = {"ip": ip, "success": success}
+    if error:
+        payload["error"] = error
+    if details:
+        payload.update(details)
     await audit_chain.record(
         event=action,
         actor=user_id,
         resource=f"{resource}:{resource_id}",
-        details={"ip": ip, "success": success, "error": error} if error else {"ip": ip, "success": success},
+        details=payload,
+        db_session=db_session,
     )
 
 
@@ -362,6 +376,7 @@ async def _issue_tokens_for(user: User, request: Request, db: AsyncSession, clie
         resource="user",
         resource_id=user.id,
         ip=client_ip,
+        db_session=db,
     )
 
     await event_bus.publish("user.login", {
@@ -410,7 +425,8 @@ async def login(
             ip=client_ip,
             success=False,
             error="Invalid credentials",
-        )
+        db_session=db,
+    )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Invalid credentials. Remaining attempts: {remaining}",
@@ -428,7 +444,8 @@ async def login(
             resource_id=user.id,
             ip=client_ip,
             details={"step": "password_ok_mfa_pending"},
-        )
+        db_session=db,
+    )
         return LoginResponse(mfa_required=True, mfa_ticket=ticket)
 
     return await _issue_tokens_for(user, request, db, client_ip)
@@ -469,7 +486,8 @@ async def mfa_verify(
             ip=client_ip,
             success=False,
             error="Invalid MFA code",
-        )
+        db_session=db,
+    )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid MFA code")
 
     return await _issue_tokens_for(user, request, db, client_ip)
@@ -510,6 +528,7 @@ async def mfa_enable(
         resource="user",
         resource_id=user.id,
         ip=request.client.host if request.client else "",
+        db_session=db,
     )
 
 
@@ -537,6 +556,7 @@ async def mfa_disable(
         resource="user",
         resource_id=user.id,
         ip=request.client.host if request.client else "",
+        db_session=db,
     )
 
 
@@ -613,6 +633,7 @@ async def logout(
         resource="user",
         resource_id=user.id,
         ip=request.client.host if request.client else "",
+        db_session=db,
     )
 
 
@@ -682,6 +703,7 @@ async def _create_user(db: AsyncSession, body: UserCreate, request: Request, *, 
         resource="user",
         resource_id=user.id,
         ip=request.client.host if request.client else "",
+        db_session=db,
     )
     return user
 
@@ -747,6 +769,7 @@ async def bootstrap_admin(
         resource="user",
         resource_id=user.id,
         ip=request.client.host if request.client else "",
+        db_session=db,
     )
     return user
 
