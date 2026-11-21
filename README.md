@@ -41,6 +41,31 @@
 
 ---
 
+## 🖼️ Galería — Concept UI
+
+> Referencias visuales de diseño (**concept art**). No son capturas del runtime actual: la interfaz implementada vive en `frontend/` con sus propios tokens y estados reales.
+
+<table>
+  <tr>
+    <td><img src="docs/images/concepts/concept-cop-tactical.jpeg" alt="COP táctico" width="440"></td>
+    <td><img src="docs/images/concepts/concept-intel-analytics.jpeg" alt="Analítica de inteligencia" width="440"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>COP táctico</b> — mapa, unidades, amenazas y estado de misión</td>
+    <td align="center"><b>Analítica de inteligencia</b> — grafo de entidades y series temporales</td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/concepts/concept-security-console.jpeg" alt="Consola de seguridad" width="440"></td>
+    <td><img src="docs/images/concepts/concept-data-analytics.jpeg" alt="Analítica de datos" width="440"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Consola de seguridad</b> — integridad, amenaza predictiva y topología</td>
+    <td align="center"><b>Analítica de datos</b> — inventario, clasificación y almacenamiento</td>
+  </tr>
+</table>
+
+---
+
 ## ⚡ Aspectos Destacados del Sistema
 
 <div align="center">
