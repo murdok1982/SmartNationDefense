@@ -101,7 +101,7 @@
   - **Verification:** `pytest backend/tests/test_e2e_intelligence_cycle.py`
   - **Retries:** `0/3`
 
-- [ ] **TASK-011:** MIGRATIONS-001 — Alembic legacy vs real — archivar migrations/*.legacy (TD-012).
+- [x] **TASK-011:** MIGRATIONS-001 — Alembic legacy vs real — archivar migrations/*.legacy (TD-012). (VERIFICADO: `ls backend/migrations/archived/` = 002_intel_products.sql.legacy + schema_design.sql.legacy; `python3 -m py_compile` OK en env.py + 003; S1-004: env.py usa create_async_engine, NO AsyncEngine/engine_from_config; S1-005: revision 003_intel_products → down 002_audit_chain; alembic heads CLI NO ejecutado — no existe alembic.ini/backend/alembic/versiones usables sin geoalchemy2; sustituido por AST/comparación de sets parseados: column sets equal=True, índices iguales)
   - **Owner:** `@builder` -> `@qa-verifier`
   - **Depends On:** `NONE`
   - **Spec Ref:** SPEC.md §1 (AC-13)

@@ -3,8 +3,8 @@ Alembic env.py para migraciones asíncronas con SQLAlchemy + PostGIS.
 """
 import asyncio
 from logging.config import fileConfig
-from sqlalchemy import engine_from_config, pool
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy import pool
+from sqlalchemy.ext.asyncio import create_async_engine
 from alembic import context
 import sys
 from pathlib import Path
@@ -38,12 +38,8 @@ def run_migrations_offline():
 
 async def run_migrations_online():
     """Ejecuta migraciones en modo 'online' con AsyncEngine."""
-    connectable = AsyncEngine(
-        engine_from_config(
-            {"sqlalchemy.url": settings.DATABASE_URL},
-            prefix="sqlalchemy.",
-            poolclass=pool.NullPool,
-        )
+    connectable = create_async_engine(
+        settings.DATABASE_URL, poolclass=pool.NullPool
     )
 
     async with connectable.connect() as connection:

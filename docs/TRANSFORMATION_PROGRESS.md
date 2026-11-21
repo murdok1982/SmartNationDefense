@@ -47,6 +47,13 @@
 
 > FASE 2a: 14 tareas verificadas (5%) — COMMIT `f3662e6` (nginx/compose/.env/certs) y `837b68f` (security core).
 
+### FASE 2a-bis — Migrations round (TASK-011 archivar legacy + S1-004 alembic env.py fix + S1-005 migration 003_intel_products) — COMPLETO (Verificado 21-11-2026)
+
+- Archivado `backend/migrations/002_intel_products.sql.legacy` + `schema_design.sql.legacy` → `backend/migrations/archived/` (git mv). SQL legacy sigue disponible a mano con `psql`, desacoplado de alembic.
+- `backend/alembic/env.py`: arreglo S1-004: `create_async_engine(settings.DATABASE_URL, poolclass=pool.NullPool)` (eliminado `AsyncEngine(engine_from_config(...))`).
+- `backend/alembic/versions/003_intel_products.py`: conversión a `op.create_table`/`op.create_index` (down_revision='002_audit_chain'). Verificación honesta sin DB: AST (HEADS=['003_intel_products'], column sets equal), py_compile de los 4 archivos de versions.
+- pytest real: **35 passed**.
+
 ### FASE 1 — COMPLETO (Verificado 21-11-2026)
 
 | Entregable | Archivo | Verificación |
