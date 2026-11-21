@@ -6,6 +6,7 @@ from sqlalchemy import ARRAY, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.models.osint.base import BaseModel
+from app.db.models.persistence import User
 
 class CaseStatus(str, Enum):
     OPEN = "OPEN"
@@ -32,12 +33,12 @@ class Case(BaseModel):
     status: Mapped[str] = mapped_column(String(32), default=CaseStatus.OPEN, nullable=False, index=True)
     priority: Mapped[str] = mapped_column(String(16), default=CasePriority.MEDIUM, nullable=False, index=True)
     tags: Mapped[list[str]] = mapped_column(ARRAY(String), default=list, nullable=False)
-    operator_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    operator_id: Mapped[str] = mapped_column(ForeignKey(User.__table__.c.id), nullable=False, index=True)
     scope_notes: Mapped[str] = mapped_column(Text, default="")
     classification: Mapped[str] = mapped_column(String(32), default=CaseClassification.UNCLASSIFIED)
     deleted: Mapped[bool] = mapped_column(default=False)
 
-    operator: Mapped["User"] = relationship("User", back_populates="cases")  # type: ignore[name-defined]  # noqa: F821
+    operator: Mapped["User"] = relationship(User)  # User unificado (ADR-003)
     entities: Mapped[list["Entity"]] = relationship("Entity", back_populates="case", cascade="all, delete-orphan")  # type: ignore[name-defined]  # noqa: F821
     evidence: Mapped[list["Evidence"]] = relationship("Evidence", back_populates="case", cascade="all, delete-orphan")  # type: ignore[name-defined]  # noqa: F821
     jobs: Mapped[list["Job"]] = relationship("Job", back_populates="case", cascade="all, delete-orphan")  # type: ignore[name-defined]  # noqa: F821

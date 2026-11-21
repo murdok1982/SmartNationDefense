@@ -54,6 +54,18 @@
 - `backend/alembic/versions/003_intel_products.py`: conversión a `op.create_table`/`op.create_index` (down_revision='002_audit_chain'). Verificación honesta sin DB: AST (HEADS=['003_intel_products'], column sets equal), py_compile de los 4 archivos de versions.
 - pytest real: **35 passed**.
 
+### FASE 4a — DB EncryptedField fail-closed — COMPLETO (Verificado 21-11-2026)
+
+| Tarea | Estado | Evidencia |
+|---|---|---|
+| TASK-010 (TD-006 EncryptedField fail-closed) | `VERIFIED` | `__get__`: L42 `raise ValueError("AES_KEY no configurado... fail-closed")`; `__set__`: L54 same. Roundtrip AES_KEY-set OK. pytest **35 passed** |
+
+### FASE 2a-ter — DB Consolidación (TASK-008, ADR-003) — COMPLETO (Verificado 21-11-2026)
+
+| Tarea | Estado | Evidencia |
+|---|---|---|
+| TASK-008 (TD-001 Consolidación User) | `VERIFIED` | collisiones 0: `grep "users" tablename` → 1; `class User(Base)` único (persistence.py:296); intel/user.py y osist/user.py = re-export (`OU is IU is User → True`); aliases `IntelUserSchema`/`OsistUserSchema` (persistence.py:367-368); `osint/case.py` FK→`User.__table__.c.id`; pytest **35 passed** |
+
 ### FASE 1 — COMPLETO (Verificado 21-11-2026)
 
 | Entregable | Archivo | Verificación |

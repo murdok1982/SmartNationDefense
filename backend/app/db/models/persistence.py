@@ -294,16 +294,78 @@ class EventStore(Base):
 
 
 class User(Base):
+    """Unified User — tabla ``users`` única (ADR-003).
+
+    Consolidación de los tres modelos que definían la misma tabla:
+    ``persistence.User`` (original), ``intel.user.User`` y
+    ``osist.user.User``. Campos conservados:
+
+    - persistence: ``username``, ``email``, ``hashed_password``,
+      ``role``, ``classification_level``, ``is_active``, ``id``,
+      ``created_at``.
+    - intel: ``two_factor_enabled``, ``clearance_level`` (Integer),
+      ``org_id``, ``mfa_secret``.
+    - osist: ``full_name``, ``is_superuser``, ``scopes``,
+      ``classification``, ``tenant_id``, ``failed_login_attempts``,
+      ``locked_until``, ``phone``, ``department``, ``mfa_enabled``,
+      ``last_login``, ``last_ip``, ``updated_at``.
+
+    Deviations documentadas:
+
+    - ``scopes`` es ``JSON`` (genérico, compatible SQLite) en lugar
+      de ``ARRAY(String)``: ``ARRAY`` no se compila en SQLite y
+      ``Base.metadata.create_all`` se ejecuta sobre SQLite en las
+      pruebas (conftest).
+    - ``clearance_level`` es ``Integer`` NOT NULL default 0: el
+      default anterior de intel, ``ClassificationLevel.PUBLIC.value``
+      ("public"), no encajaba con el tipo Integer de la columna.
+    - La relación ``cases`` del modelo osist no se mantuvo: nada la
+      lectura; ``app/db/models/osint/case.py`` apunta al nuevo User.
+    """
+
     __tablename__ = "users"
 
+    # --- identidad (persistence + osist UUIDMixin) ---
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     username = Column(String, unique=True, nullable=False, index=True)
     email = Column(String, unique=True, nullable=True)
     hashed_password = Column(String, nullable=False)
+
+    # --- roles y clasificación (persistence) ---
     role = Column(String, nullable=False, default="operator")
     classification_level = Column(String, nullable=False, default="RESTRICTED")
     is_active = Column(Boolean, default=True, nullable=False)
+
+    # --- campos Intel (intel.User) ---
+    two_factor_enabled = Column(Boolean, default=False, nullable=False)
+    clearance_level = Column(Integer, nullable=False, default=0, server_default="0")
+    org_id = Column(String, nullable=True, index=True)
+
+    # --- campos OSINT (osist.User) ---
+    full_name = Column(String(256), default="", nullable=False)
+    is_superuser = Column(Boolean, default=False, nullable=False)
+    scopes = Column(JSON, default=list, nullable=False)
+    last_login = Column(DateTime(timezone=True), nullable=True)
+    last_ip = Column(String(64), nullable=True)
+    classification = Column(String(32), default="UNCLASSIFIED", nullable=False)
+    tenant_id = Column(String(64), default="default", nullable=False, index=True)
+    failed_login_attempts = Column(Integer, default=0, nullable=False)
+    locked_until = Column(DateTime(timezone=True), nullable=True)
+    phone = Column(String(32), nullable=True)
+    department = Column(String(128), nullable=True)
+    mfa_secret = Column(Text, nullable=True)
+    mfa_enabled = Column(Boolean, default=False, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=func.now())
+
     created_at = Column(DateTime(timezone=True), default=func.now())
+
+
+# ADR-003 — Esquemas Unificados (aliases): ``User`` es el modelo ÚNICO
+# de la tabla ``users``; ``IntelUserSchema`` y ``OsistUserSchema``
+# resuelven a él para compatibilidad de imports
+# (app/api/intel/* e app/api/osint/* importan "User" desde sus módulos).
+IntelUserSchema = User
+OsistUserSchema = User
 
 
 class Sensor(Base):
