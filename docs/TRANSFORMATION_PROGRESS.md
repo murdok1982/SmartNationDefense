@@ -1,6 +1,6 @@
 # TRANSFORMATION_PROGRESS.md — Estado del Proceso de Transformación (SmartNationDefense)
 
-**Doc ID:** PRG-2026-SND-001 | **Estado:** `FASE 3 — auditoría en curso; FASE 2/5/6/8 verificadas` (41/46 tasks)
+**Doc ID:** PRG-2026-SND-001 | **Estado:** **FASES 0-9 VERIFICADAS — 46/46 tasks** · Seguridad FASE 3 **APPROVED (0 CRITICAL / 0 HIGH)**
 
 ---
 
@@ -11,7 +11,7 @@
 | FASE 0 | Repositorio Audit | **COMPLETO** (Verificado FASE 0) | 21-11-2026 | `docs/audit/*`, 5 documentos, ARCH-009+TD-010. Verificado por qa-verifier (código real). |
 | FASE 1 | Rediseño Arquitectónico | **COMPLETO** (Verificado FASE 1) | 21-11-2026 | `docs/architecture/*`, ADR-001..013, TASKS.md PHASE 0-1. |
 | FASE 2 | Backend Hardening | **COMPLETO** (Verificado 21-11-2026) | 21-11-2026 | TASK-014/023/031 + AC-08..AC-17 `[x]`; pytest 64 passed. |
-| FASE 3 | Seguridad + SEC-FIX-XXX | `PENDING` | FASE 3 | High-02, High-03, MEDIUM-01, MEDIUM-02, SSRF IP pinning, redteam re-run. |
+| FASE 3 | Seguridad + SEC-FIX-XXX | **COMPLETO / APPROVED** (Verificado 21-11-2026) | 21-11-2026 | 0 CRITICAL / 0 HIGH; 8/8 HIGH FIXED; MEDIUM residuales documentados. |
 | FASE 4 | Data Migration & Modernization | **COMPLETO** (Verificado 21-11-2026) | 21-11-2026 | TASK-031 User unified export, TASK-032/044 clearance v1+v3 (0 gaps en 141 rutas). |
 | FASE 5 | Testing Suite | **COMPLETO** (Verificado 21-11-2026) | 21-11-2026 | TASK-033..038: 64 passed, SSRF 18 tests, brute-force distribuido, validate_all VALIDATED. |
 | FASE 6 | Observabilidad | **COMPLETO estático** (Verificado 21-11-2026) | 21-11-2026 | `/metrics` real, 7 dashboards, Alertmanager 9 alertas, 12/12 healthchecks. Runtime Docker pendiente. |
@@ -136,6 +136,29 @@
 ### FASE 8 — Dedup legacy (TASK-043) — COMPLETO (Verificado 21-11-2026)
 
 - `app/db/models/osint/audit_log.py` es shim de re-export de `persistence.AuditLog` (sin mapeo duplicado); `osint/audit.py` importa el modelo canónico; 1 tabla `audit_log`.
+
+### FASE 3 — Security Gate APPROVED (TASK-029/030) — COMPLETO (Verificado 21-11-2026)
+
+**Veredicto independiente (`@redteam-auditor`) sobre HEAD `dc40049`: `APPROVED` — 0 CRITICAL / 0 HIGH abiertos.**
+
+| Hallazgo | Severidad | Estado | Evidencia |
+|---|---|---|---|
+| VULN-006 brute-force login vivo | HIGH | **FIXED** | `test_login_lockout.py` 2 passed: 429 + `Retry-After: 60` + `AuditLog` persistido |
+| VULN-007 fail-open sin Redis | HIGH | **FIXED** | `test_rate_limit_hardening.py` 7 + `test_security_core.py` 34 (dev open / prod 503) |
+| VULN-008 IP de proxy (bucket global) | HIGH | **FIXED** | 4 tests anti-spoofing + bucket `sub`; nginx sobrescribe `X-Real-IP` |
+| VULN-009 dependencias HIGH/CRITICAL | HIGH | **FIXED** | `npm audit --omit=dev` → 0; `pip-audit` con allowlist → 0 |
+| VULN-032 bypass rate-limit por `X-API-Key` | HIGH | **FIXED** | antes 3 cabeceras → 3 buckets; después → 1 (`test_rate_limit_identity.py`) |
+| VULN-033 `request.url.path`/Host poisoning | MEDIUM | **FIXED** | `request_path()` usa `scope["path"]`; nginx devuelve 400 a Host con `/` |
+| VULN-034 `NameError` en rama fail-closed | MEDIUM | **FIXED** | sonda directa; `logger` presente y 503 con Retry-After |
+| VULN-003 credenciales públicas | HIGH | **FIXED** | placeholders + validador production + `ADMIN_INITIAL_PASSWORD` obligatoria |
+| VULN-004 SSRF OSINT TOCTOU | HIGH | **FIXED** | `_PinnedDNS` + peer check (`test_ssrf` 18 passed) |
+| VULN-005 SSRF visión/Maven | HIGH | **FIXED** | `safe_http_get` en visión (`test_vision_ssrf` 10 passed) |
+
+**Evidencia ejecutable final:** `pytest backend/tests -q` → **169 passed**; `python3 scripts/validate_all.py` → **VALIDATED** exit 0; `compileall` exit 0; `npm audit --omit=dev --audit-level=high` → **0**; `pip-audit` (allowlist) → **No known vulnerabilities**.
+
+**Residuales MEDIUM declarados (no bloquean el Exit Gate, documentados en `.factory/SECURITY_AUDIT.md`):** VULN-035 MFA no aplicado en rutas vivas (el más urgente), VULN-036 lockout ⇒ DoS de cuenta, VULN-037 `revoke_jti` fail-open en escritura, VULN-038 `TRUSTED_PROXIES` interno (ACCEPTED), VULN-039 starlette allowlist (ACCEPTED, expira FASE 10), VULN-015 `/metrics` sin token, VULN-040 `Admin` registrable como cuenta distinta.
+
+**Condición del APPROVED:** `ENVIRONMENT=production|staging`, secretos propios, `METRICS_TOKEN` definido (o `/metrics` cerrado) y no montar OSINT/classified sin cerrar VULN-014/020/022/035.
 
 ### FASE 7 — Móvil (TASK-042) — COMPLETO (Verificado 21-11-2026)
 

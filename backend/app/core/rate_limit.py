@@ -12,7 +12,6 @@ añade un bucket independiente por `sub` autenticado.
 import asyncio
 import ipaddress
 import time
-import hashlib
 import uuid
 from fastapi import Request, status
 from fastapi.responses import JSONResponse
@@ -23,6 +22,18 @@ import logging
 from app.core.config import settings
 
 logger = logging.getLogger("sesis.security.ratelimit")
+
+
+def request_path(request: Request) -> str:
+    """Ruta de enrutado real, no la URL reconstruida a partir del Host.
+
+    SEC-FIX-009 / CVE-2026-48710 ("BadHost"): ``request.url.path`` se
+    reconstruye como ``{scheme}://{Host}{path}``; un ``Host`` con "/" antepone
+    segmentos y cambia el path observado. Como el rate-limit, la lista de rutas
+    públicas y la clave de lockout se derivan de ese path, la decisión de
+    seguridad debe usar ``scope["path"]`` (la ruta que realmente se enruta).
+    """
+    return request.scope.get("path") or "/"
 
 
 def _trusted_proxy_networks() -> list:
@@ -141,12 +152,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next: Callable):
         client_ip = resolve_client_ip(request)
-        api_key = request.headers.get("X-API-Key", "")
+        # SEC-FIX-010: el bucket NO se deriva de X-API-Key (cabecera del
+        # cliente sin validar): un valor aleatorio por petición crearía un
+        # bucket nuevo cada vez y anularía el rate-limit. La identidad real
+        # es la IP resuelta y, si hay JWT verificado, el `sub`.
         key_parts = [client_ip]
-        if api_key:
-            key_parts.append(hashlib.sha256(api_key.encode()).hexdigest()[:16])
 
-        path = request.url.path
+        path = request_path(request)
         limit_key = "default"
         if path.rstrip("/").endswith("/auth/login"):
             limit_key = "login"

@@ -123,7 +123,9 @@ def _route_label(request: Request) -> str:
 @app.middleware("http")
 async def prometheus_metrics_middleware(request: Request, call_next):
     """Instrumenta cada petición para los dashboards de FASE 6."""
-    if request.url.path == "/metrics":
+    from app.core.rate_limit import request_path
+
+    if request_path(request) == "/metrics":
         return await call_next(request)
 
     started = time.perf_counter()

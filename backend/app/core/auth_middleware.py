@@ -5,6 +5,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
 from app.core.security import decode_token
+from app.core.rate_limit import request_path
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         request.state.principal = None
-        if request.url.path in PUBLIC_PATHS or request.method == "OPTIONS":
+        # SEC-FIX-009: path de enrutado (scope), inmune a Host poisoning.
+        if request_path(request) in PUBLIC_PATHS or request.method == "OPTIONS":
             return await call_next(request)
 
         auth = request.headers.get("Authorization", "")

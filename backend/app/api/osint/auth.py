@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -23,7 +24,9 @@ from app.api.osint.deps import (
 from app.core.audit import audit_chain
 from app.core.config import settings
 from app.core.events import event_bus
-from app.core.rate_limit import CircuitBreaker, get_limiter_key
+from app.core.rate_limit import CircuitBreaker, get_limiter_key, request_path
+
+logger = logging.getLogger(__name__)
 from app.core.security import (
     create_access_token,
     create_mfa_challenge_token,
@@ -367,7 +370,7 @@ async def _issue_tokens_for(user: User, request: Request, db: AsyncSession, clie
     )
     await db.commit()
 
-    await BruteForceProtector.record_success(user.username, client_ip, request.url.path)
+    await BruteForceProtector.record_success(user.username, client_ip, request_path(request))
 
     token_pair = _create_token_pair(
         user_id=user.id,
@@ -406,7 +409,7 @@ async def login(
     db: DBSession,
 ) -> LoginResponse:
     client_ip = request.client.host if request.client else "unknown"
-    path = request.url.path
+    path = request_path(request)
 
     if await BruteForceProtector.is_locked(body.username, path):
         remaining = await BruteForceProtector.get_remaining_attempts(body.username, path)
@@ -486,7 +489,7 @@ async def mfa_verify(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="MFA not enabled for user")
 
     if not _verify_code(user.mfa_secret, body.code):
-        await BruteForceProtector.record_failure(user.username, client_ip, request.url.path)
+        await BruteForceProtector.record_failure(user.username, client_ip, request_path(request))
         await _log_audit(
             user_id=user.id,
             action="LOGIN",

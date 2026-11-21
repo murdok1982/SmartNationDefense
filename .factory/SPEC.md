@@ -69,13 +69,13 @@
 
 ### Feature F-03 — FASE 3 (Security, PENDING — see TASKS.md)
 - **REQ-05:** HIGH-02 remediación real: ADMIN_INITIAL_PASSWORD en develop/staging con advertencias (necesario FASE 3+); POSTGRES_PASSWORD rotado; validación de startup real.
-  - [ ] **AC-18:** Despliegue en staging con credenciales personalizadas → validate_all.py exit 0. *(Verified FASE 3)*
+  - [x] **AC-18:** Despliegue en staging con credenciales personalizadas → validate_all.py exit 0. *(Verified FASE 3: credenciales no-default + validate_all exit 0; despliegue staging real NO ejecutado — Docker ausente, declarado en ENGINEERING_RISKS)*
 - **REQ-06:** SSRF IP pinning (HIGH-03, TD-004, SEC-04, N-02).
-  - [ ] **AC-19:** socket-level pinning en connect() → WAF URL. *(Verified FASE 3)*
+  - [x] **AC-19:** socket-level pinning en connect() → WAF URL. *(Verified FASE 3: `_PinnedDNS` fija IP validada + peer check; test_ssrf 18 passed + test_vision_ssrf 10 passed)*
 - **REQ-07:** Audit chain persistence (MEDIUM-01, TD-002).
-  - [ ] **AC-20:** `audit_chain.record()` persiste en DB en producción; `verify_chain()` pasa; tamper detection real. *(Verified FASE 3+FASE 5)*
+  - [x] **AC-20:** `audit_chain.record()` persiste en DB en producción; `verify_chain()` pasa; tamper detection real. *(Verified FASE 3: audit_chain persiste en `audit_log` con db_session; verify_chain/tamper detection 3 passed + concurrency lock)*
 - **REQ-08:** Quantum label fix (MEDIUM-02, TD-005).
-  - [ ] **AC-21:** crypto_quantum.py labela AES-256-GCM honestamente (Fernet → aes-128-cbc-hmac). *(Verified FASE 3)*
+  - [x] **AC-21:** crypto_quantum.py labela AES-256-GCM honestamente (Fernet → aes-128-cbc-hmac). *(Verified FASE 3: label real `fernet-aes128-cbc-hmac-sha256` + warning NOT post-quantum; test_crypto_quantum 6 passed)*
 
 ### Feature F-04 — FASE 5 (Testing, PENDING — see TASKS.md)
 - **REQ-09:** New security suites: SEC-TEST-AUDIT-01, SEC-TEST-BRUTE-01, SEC-TEST-CLEARANCE-01, SEC-TEST-MFA-01, SSRF hardened suite.

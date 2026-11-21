@@ -1,28 +1,29 @@
 # ADVERSARIAL SECURITY AUDIT REPORT (FACTORY)
 
-- **Audit Status:** `FAIL (OPEN HIGH FINDINGS)` — re-auditoría adversarial FASE 3 sobre `HEAD 0f8f3cb` + working tree. **Aviso de concurrencia:** otro subagente trabajó en el mismo working tree durante la auditoría (añadió `tests/test_crypto_quantum.py`, `test_mfa_core.py`, `test_security_core.py`, `test_web_tools_core.py` a las 17:58-17:59 y creó el commit `0f8f3cb`); todos los hallazgos `OPEN` fueron **re-verificados contra el árbol final** y siguen vigentes. Quedan sin commitear mis fixes de 3 archivos + 1 test.
+- **Audit Status:** `PASS (0 CRITICAL / 0 HIGH abiertos)` — **re-auditoría de cierre** de los 4 HIGH (VULN-006/007/008/009) sobre `HEAD dc40049` + fixes de esta sesión.
 - **Auditor Agent:** `@redteam-auditor`
-- **Target:** `0f8f3cb` + cambios de auditoría sin commitear (`backend/app/api/v3/router.py`, `backend/app/core/config.py`, `backend/app/services/vision/analyst.py`, `backend/tests/test_vision_ssrf.py`)
-- **Metodología:** lectura adversarial del código real, introspección de la app FastAPI (172 rutas), ejecución de la suite, validación de producción, y consulta a la API **OSV.dev** (`/v1/querybatch`) para PyPI (34 pins de `requirements.txt`) y npm (469 paquetes de `package-lock.json`).
-- **Summary Counts (FASE 3 — estado honesto):**
+- **Target:** `dc40049` + cambios de auditoría sin commitear: `backend/app/core/rate_limit.py`, `backend/app/core/auth_middleware.py`, `backend/app/api/auth.py`, `backend/app/api/osint/auth.py`, `backend/app/main.py`, `backend/tests/test_rate_limit_identity.py` (nuevo).
+- **Metodología:** lectura adversarial + **búsqueda activa de bypasses** de los propios fixes (Host poisoning, spoofing de IP, variantes de username, cabeceras controladas por el cliente, agujeros de fail-closed), introspección de la app (180 rutas), ejecución de la suite (169 passed), SCA real (`npm audit`, `pip-audit`, OSV), y prueba empírica del borde Nginx (nginx 1.30.4 local).
+- **Summary Counts (estado honesto al cierre):**
   - `CRITICAL`: **0 abiertos** (2 históricos `FIXED`: VULN-001, VULN-002)
-  - `HIGH`: **7 totales** → `FIXED` 3 (VULN-003, 004, 005) / **`OPEN` 4** (VULN-006, 007, 008, 009)
-  - `MEDIUM`: **15 totales** → `FIXED` 2 / `PARTIAL` 3 / **`OPEN` 10**
+  - `HIGH`: **8 totales** → **`FIXED` 8 / `OPEN` 0** (incluye VULN-032, bypass HIGH encontrado y corregido en esta sesión)
+  - `MEDIUM`: **23 totales** → `FIXED` 5 / `PARTIAL` 2 / `ACCEPTED-RISK` 2 / **`OPEN` 14**
   - `LOW`: **7 totales** → `OPEN` 4 / `ACCEPTED-RISK` 3
 
-> **EXIT GATE RULE:** El proyecto NO puede darse por finalizado mientras exista cualquier hallazgo `CRITICAL` o `HIGH` en estado `OPEN`. Quedan **4 HIGH abiertos** → veredicto `BLOCKED` y tareas `SEC-FIX-XXX` en `.factory/TASKS.md`.
+> **EXIT GATE RULE:** El proyecto NO puede darse por finalizado mientras exista cualquier hallazgo `CRITICAL` o `HIGH` en estado `OPEN`. **Hoy: 0 abiertos → `APPROVED`**, con 14 MEDIUM + 4 LOW abiertos documentados (§5) y dos bypasses nuevos (`VULN-032` HIGH, `VULN-033` MEDIUM) corregidos con test de regresión.
 
 ---
 
 ## 1. ATTACK SURFACE & THREAT MODEL
 
-**Rutas realmente registradas por `app.main:app`: 172** (introspección ejecutada, ver §4).
+**Rutas realmente registradas por `app.main:app`: 180 `APIRoute`** (introspección ejecutada, ver §4).
 
 - **Puntos de entrada públicos (confirmados por introspección de dependencias):**
   - `POST /api/v1/auth/login`, `POST /api/v1/auth/register`, `POST /api/v1/auth/refresh`
-  - `GET /api/v1/health`, `GET /`, `GET /metrics`, `GET /docs`, `GET /redoc`, `GET /openapi.json`
+  - `GET /api/v1/health`, `GET /`, `GET /metrics` (token **opcional**: público si `METRICS_TOKEN` está vacío), `GET /docs`, `GET /redoc`, `GET /openapi.json`
+  - `GET /metrics`, `/docs`, `/redoc`, `/openapi.json` no pasan por `AuthMiddleware.PUBLIC_PATHS` salvo docs/openapi; `/metrics` se autentica sólo si hay token configurado.
 - **Puntos de entrada autenticados:** todo el resto (`/api/v1/c2/*`, `/api/v1/{messaging,terrain,logistics,aar,reports,fusion,prediction,map,voice,planning,satellite,osint,intel,agents,tactical}/*`, `/api/v2/*`, `/api/v3/*`).
-- **Enforcement de clasificación:** **0 endpoints con autenticación y sin `require_clearance`** (script de introspección, §4). El control v1/v2/v3 es homogéneo: `Depends(require_clearance("RESTRICTED"|"CONFIDENTIAL"))` + `_AUTH_DEPS = [Depends(get_current_user)]` a nivel de router.
+- **Enforcement de clasificación:** **2 endpoints con autenticación y sin `require_clearance`** (`/api/v1/auth/logout`, `/api/v1/auth/me`: self-service, sin datos clasificados) y **0** que expongan datos de módulo sin clearance (script de introspección, §4). El control v1/v2/v3 es homogéneo: `Depends(require_clearance("RESTRICTED"|"CONFIDENTIAL"))` + `_AUTH_DEPS = [Depends(get_current_user)]` a nivel de router.
 - **Autenticación:** JWT HS256 (`access` + `refresh`), `aud`/`iss` verificados, `type` verificado, `jti` con blacklist Redis. MFA TOTP (secreto AES-256-GCM en reposo) implementado en `app/api/osint/auth.py` — **router no montado** (ver VULN-022).
 - **Activos sensibles:** `SECRET_KEY` (firma JWT + firma de uploads + fallback de tickets MFA), `MFA_ENCRYPTION_KEY`, `ADMIN_INITIAL_PASSWORD`, credenciales Postgres/Neo4j/Redis/NATS/Grafana, `fernet.key`, datos de clasificación hasta `TOP_SECRET`.
 - **Fronteras de confianza:** Navegador (Next.js 3000) → Nginx (443/80) → FastAPI (8000) → Postgres/Redis/NATS/Neo4j/Ollama. Flutter → FastAPI. Backend → Internet (OSINT, visión, LLM).
@@ -44,9 +45,9 @@
 - [x] **Passwords** — bcrypt vía passlib (`CryptContext(schemes=["bcrypt"])`). OK.
 - [x] **JWT** — algoritmos **fijados a `["HS256"]`** (`app/core/security.py:137-143`), `aud`+`iss`+`type` verificados; `mfa_challenge` rechazado en `get_current_user`.
 - [x] **Autorización/IDOR** — `require_clearance` en el 100 % de rutas no públicas; `assert_resource_access` en OSINT (owner + clasificación); filtro por `classification` en `/api/v1/intel`. **Sin IDOR detectado en rutas montadas.**
-- [ ] **Brute-force / lockout de la ruta de login VIVA — FALLA.** El lockout (`_BruteForceProtector`) vive en `app/api/osint/auth.py`, que **no está montado**; `/api/v1/auth/login` no tiene lockout por cuenta. → **VULN-006 (HIGH, OPEN)**
-- [ ] **Fail-open de controles con Redis caído — FALLA.** Rate limit, blacklist `jti` y tickets MFA fallan abiertos y el arranque continúa sin Redis. → **VULN-007 (HIGH, OPEN)**
-- [ ] **Rate-limit por cliente real — FALLA detrás de Nginx.** `request.client.host` es la IP de Nginx (uvicorn `forwarded_allow_ips=127.0.0.1` por defecto; Nginx llega desde red Docker) → un único bucket global. → **VULN-008 (HIGH, OPEN)**
+- [x] **Brute-force / lockout de la ruta de login VIVA — CORREGIDO Y RE-VERIFICADO.** `/api/v1/auth/login` usa `BruteForceProtector` (Redis, path-aware): 429 + `Retry-After: 60`, `record_failure`/`record_success` y auditoría persistente (`test_login_lockout.py` → 2 passed). Bypasses probados: variantes de mayúsculas/espacios (lookup SQL case-sensitive → no autentican), Host poisoning (corregido, §VULN-033) y buckets por `X-API-Key` (bypass real encontrado → §VULN-032). Residual: DoS por bloqueo de cuenta (§VULN-036). → **VULN-006 (HIGH, FIXED)**
+- [x] **Fail-open de controles con Redis caído — CORREGIDO.** `SECURITY_FAIL_MODE` (derivado dev=open / staging+prod=closed), rate-limit 503 + `Retry-After: 30`, `is_jti_revoked` 503, `lifespan` aborta el arranque y el lockout deniega (`test_rate_limit_hardening.py` 7 passed, `test_security_core.py` 34 passed). Se encontró y corrigió un `NameError` en la rama closed del lockout (§VULN-034). Residuales: `revoke_jti` write fail-open (§VULN-037), NATS in-memory (LOW). → **VULN-007 (HIGH, FIXED)**
+- [x] **Rate-limit por cliente real — CORREGIDO.** `resolve_client_ip()` sólo acepta `X-Real-IP`/`X-Forwarded-For` si el peer está en `TRUSTED_PROXIES` (IP inválida → peer) y añade bucket `{limit}:sub:{sub}` por identidad JWT (`test_rate_limit_hardening.py` → 4 tests de spoofing). Nginx sobrescribe `X-Real-IP` (medido, §4). Residual: cualquier peer RFC1918 es “confiable” (§VULN-038). → **VULN-008 (HIGH, FIXED)**
 - [x] **MFA challenge isolation (unitario)** — `type` estricto, `alg` verificado tras decode, ticket de un solo uso con `jti` revocado (`test_mfa_security.py` 3 passed). **Riesgo residual:** fallback de secreto y replay si Redis cae (§VULN-014).
 - [x] **Refresh rotation + revocación** — `refresh` valida `type`, blacklist `jti` y revoca el token usado.
 
@@ -63,7 +64,7 @@
 - [x] **SSRF OSINT (`web_tools`)** — allowlist de esquemas, denylist de redes (privadas, CGNAT, link-local, metadata, IPv6 ULA/link-local/v4-mapped), **IP pinning** con `socket.getaddrinfo` fijado, verificación de peer post-conexión y validación en cada salto de redirección. `test_ssrf.py` → **18 passed**.
 - [x] **SSRF en visión/Maven — CORREGIDO EN ESTA AUDITORÍA.** `SatelliteAnalyst._download_image` y `/api/v3/vision/drone-frame` descargaban URLs arbitrarias con `follow_redirects=True` sin validación (§VULN-005).
 - [x] **Uploads** — límite `max_file_size_bytes` (50 MB) + whitelist de nombre + contención de path en evidence/media. `media` **no está montado** (§VULN-020).
-- [ ] **Dependencias** — OSV: **6 paquetes PyPI** y **15 paquetes npm** con advisories sobre los pins actuales; 2 CRITICAL (`torch`, `next`) sin parche en la rama fijada. → **VULN-009 (HIGH, OPEN)**
+- [x] **Dependencias — CORREGIDO.** `torch`/`ultralytics` fuera del runtime base (`requirements-vision.txt`, `torch>=2.6.0`), `python-multipart 0.0.34`, `python-jose 3.5.0`, `cryptography 50.0.2`, `lxml 6.1.3`, `passlib 1.7.4`, Next 16.4.6/React 19.3.1. `npm audit --omit=dev --audit-level=high` → **found 0 vulnerabilities** (exit 0). OSV sobre los 32 pins directos → sólo `python-jose` (sin fix upstream) y `pytest` (dev), ambos en la allowlist. Residual starlette 0.41.3 (§VULN-039). → **VULN-009 (HIGH, FIXED)**
 
 ---
 
@@ -118,58 +119,61 @@
   - `pytest tests/test_vision_ssrf.py -q` → **10 passed** (`169.254.169.254`, `metadata.google.internal`, `127.0.0.1`, `10.0.0.5`, `192.168.1.1`, `[::1]`, `localhost`, `file://`, `gopher://`, `[::ffff:169.254.169.254]`).
   - `python -m compileall app` → exit 0.
 
-### [VULN-006] HIGH-01 — Brute-force: el lockout existe sólo en un router NO montado
+### [VULN-006] HIGH-01 — Brute-force en el login real (SEC-FIX-005)
 - **Severity:** `HIGH` · **Categoría:** Authentication / Brute force
-- **Ubicación:** `backend/app/api/osint/auth.py:121-204` (protector), `backend/app/api/auth.py:61-95` (login VIVO sin lockout), `backend/app/api/osint/router.py` (stub de 6 rutas: **no incluye `auth`**)
-- **Estado:** `OPEN`
-- **Evidencia de que el fix previo no aplica:** introspección de rutas → `app.routes` contiene `/api/v1/auth/{login,register,refresh,logout,me}` y **ninguna** ruta `/api/v1/osint/auth/mfa/verify`. `grep -rn "osint.auth" backend/app` sólo devuelve auto-referencias; `main.py:129` monta `app.api.osint.router` (stub).
-- **PoC:** `for p in $(seq 1 1000); do curl -s -o /dev/null -w "%{http_code}\n" -X POST https://host/api/v1/auth/login -H 'Content-Type: application/json' -d "{\"username\":\"admin\",\"password\":\"pw$p\"}"; done` desde IPs rotativas → no hay bloqueo por cuenta; el único freno es el rate-limit por IP (que además falla abierto, VULN-007, y es global, VULN-008).
-- **Remediación:** implementar el lockout por `(username, path)` en `/api/v1/auth/login` (reutilizar `_BruteForceProtector` y `get_limiter_key`), registrar auditoría de intentos fallidos y forzar MFA en roles `admin`.
-- **Verificación requerida:** `pytest tests/test_brute_force.py` (nuevo) con N fallos → 429; `test_auth.py` sin regresión.
+- **Ubicación del fix:** `backend/app/api/auth.py:60-120` (login), `backend/app/api/osint/auth.py:121-210` (`BruteForceProtector` + `get_limiter_key`), `backend/app/core/rate_limit.py`
+- **Estado:** **`FIXED`** (re-verificado en esta sesión)
+- **Remediación implementada:** `/api/v1/auth/login` consulta `BruteForceProtector.is_locked(username, path)` antes de verificar la contraseña (429 + `Retry-After: 60`, 5 intentos / 300 s), registra `record_failure`/`record_success` en Redis **path-aware** y persiste cada intento fallido en la cadena de auditoría (`_log_audit(..., db_session=db)`), con métrica `auth_failure`.
+- **Bypasses probados por el auditor:**
+  - **Mayúsculas/espacios en el username:** `SELECT username='admin'` frente a `'Admin'`, `'ADMIN'`, `'admin '`, `' admin'` → **sin match** (probado en SQL: sólo `'admin'` coincide) ⇒ una variante no autentica, así que no evita el lockout para adivinar la contraseña. *(Hallazgo colateral MEDIUM: `Admin` puede registrarse como cuenta distinta → §VULN-040.)*
+  - **Host poisoning del path (CVE-2026-48710):** en starlette 0.41.3 el path se reconstruye como `{scheme}://{Host}{path}`; con `Host: x` el key de lockout cambiaba por variante. **Corregido** usando `scope["path"]` (§VULN-033) y, además, **no alcanzable por el borde**: nginx 1.30.4 responde **400** a `Host: api.sesis.local/x` (medido, §4) y `%2F` viaja literal sin cambiar el path.
+  - **Bucket por `X-API-Key`:** el bypass real encontrado (§VULN-032) permitía saltarse el límite por IP; corregido (el bucket ya no depende de cabeceras del cliente).
+- **Evidencia ejecutada:** `pytest tests/test_login_lockout.py -q` → **2 passed** (429 tras 5 fallos + `AuditLog` persistido); `pytest tests/test_rate_limit_identity.py -q` → **8 passed**; `pytest tests -q` → **169 passed**.
+- **Residual (documentado, no HIGH):** el lockout por cuenta permite DoS de la cuenta víctima (§VULN-036); MFA sigue sin aplicarse en el login (§VULN-035).
 
-### [VULN-007] N-02 — Fail-open de controles de seguridad cuando Redis no está disponible
+### [VULN-007] N-02 — Fail-open de controles de seguridad cuando Redis no está disponible (SEC-FIX-001)
 - **Severity:** `HIGH` · **Categoría:** Availability / Fail-open
-- **Ubicación:** `backend/app/core/rate_limit.py:105-111` (excepción → `call_next`), `backend/app/core/security.py:166-176` (`is_jti_revoked` → `False`), `backend/app/main.py:24-50` (lifespan continúa sin Redis), `backend/app/core/events.py:_claim_idempotency` (fallback memoria)
-- **Estado:** `OPEN`
-- **PoC:** con Redis caído (`docker compose stop redis`) la API arranca, sirve login sin rate limiting, y **acepta tokens revocados** (`logout` no tiene efecto) → un token filtrado sigue siendo válido hasta `exp` (15 min) pese a la revocación.
-- **Evidencia adicional (preocupante):** el commit `0f8f3cb` añade `tests/test_security_core.py::test_revoke_without_redis_fails_open`, que **fija como comportamiento esperado** el fail-open (`assert` de que sin Redis no se considera revocado). Es decir, el fallo está codificado en la suite: cerrarlo exige cambiar ese test, no solo el código.
-- **Remediación:** modo `FAIL_CLOSED` configurable para `ENVIRONMENT=production`: si Redis no responde en el arranque → abortar; en `is_jti_revoked` → 503/401 (deny) si no se puede consultar; `CircuitBreaker` con estado explícito y métrica `security_fail_open_total`.
-- **Verificación requerida:** test con cliente Redis que lanza excepción → `is_jti_revoked` deniega; test de arranque en production sin Redis → excepción.
+- **Ubicación del fix:** `backend/app/core/config.py:60-70` (`SECURITY_FAIL_MODE` + `security_fail_closed` derivado), `backend/app/core/rate_limit.py:130-175` (`_unavailable` → 503 + `Retry-After: 30` + `sesis_security_fail_open_total{component}`), `backend/app/core/security.py:166-184` (`is_jti_revoked` → 503), `backend/app/main.py:37-60` (aborta arranque), `backend/app/api/osint/auth.py:145-152` (lockout deniega)
+- **Estado:** **`FIXED`** (re-verificado en esta sesión)
+- **PoC original (ya no aplica):** con `docker compose stop redis` la API arrancaba, servía login sin rate limiting y aceptaba tokens revocados. Hoy: en staging/production el arranque **falla**; si Redis cae en caliente, rate-limit y revocación devuelven **503** (deny).
+- **Verificación ejecutada:**
+  - `pytest tests/test_rate_limit_hardening.py -q` → **7 passed** (closed → 503 sin llamar a `call_next`, `Retry-After: 30`; open → 200).
+  - `pytest tests/test_security_core.py -q` → **34 passed** (`test_revoke_without_redis_fails_open_in_dev`, `..._fails_closed_in_production` con 503; el test que codificaba el fail-open fue sustituido por dos).
+  - `pytest tests/test_rate_limit_identity.py -q` → **8 passed** (incluye lockout closed/deny y open/allow con Redis caído).
+  - Sonda directa `BruteForceProtector.is_locked` con Redis caído: dev/open → `False`; prod/closed → `True` tras corregir §VULN-034.
+- **Residuales documentados:** `revoke_jti` (escritura) sigue fail-open → el `logout` puede ser un no-op silencioso (§VULN-037, MEDIUM); idempotencia NATS cae a memoria (§VULN-007-LOW incluido en §3 LOW); y el modo por defecto del compose es `development` → fail-closed **apagado** salvo configuración explícita (§VULN-040).
 
-### [VULN-008] HIGH-05 — Rate-limit global por IP de proxy (bucket único) → DoS trivial
+### [VULN-008] HIGH-05 — Rate-limit global por IP de proxy (bucket único) → DoS trivial (SEC-FIX-004)
 - **Severity:** `HIGH` · **Categoría:** Rate limiting / DoS
-- **Ubicación:** `backend/app/core/rate_limit.py:87-92` (`client_ip = request.client.host`), `docker-compose.yml` (command uvicorn sin `--forwarded-allow-ips`), `infra/nginx.conf:28-32` (pasa `X-Forwarded-For`)
-- **Estado:** `OPEN`
-- **Evidencia:** uvicorn 0.53 `proxy_headers=True` con `forwarded_allow_ips` por defecto `127.0.0.1`; Nginx llega desde la red Docker (p. ej. `172.18.0.x`) → `X-Forwarded-For` **no se confía** → `request.client.host` = IP de Nginx para *todos* los clientes. Con `DEFAULT_LIMITS["default"]=(100,60)` el bucket es **global para toda la plataforma** (y `login` = **5 req/min globales**).
-- **PoC:** un atacante anónimo envía 101 req/min a cualquier endpoint → 429 para todos los operadores (DoS de plataforma). Inversamente, para el brute-force, la key no aísla al atacante.
-- **Remediación:** `uvicorn ... --forwarded-allow-ips=<subred nginx>` + `ProxyHeadersMiddleware` verificado, o derivar la IP de `X-Real-IP` sólo si el peer es el proxy conocido; añadir límites por `sub` autenticado además de por IP; test que simule XFF.
-- **Verificación requerida:** test con `X-Forwarded-For` distinto → keys distintas en Redis (`ZRANGE ratelimit:*`).
+- **Ubicación del fix:** `backend/app/core/rate_limit.py:36-63` (`resolve_client_ip`, `TRUSTED_PROXIES`), `:150-200` (bucket `sub`), `backend/app/core/config.py:63-66`
+- **Estado:** **`FIXED`** (re-verificado en esta sesión)
+- **Remediación implementada:** `resolve_client_ip()` usa `X-Real-IP`/primer `X-Forwarded-For` **sólo si el peer pertenece a `TRUSTED_PROXIES`** (default `127.0.0.1,::1,10/8,172.16/12,192.168/16`), valida la IP (inválida → peer) y añade un bucket independiente `{limit}:sub:{sub}` para identidades JWT verificadas.
+- **Bypasses probados por el auditor:**
+  - Peer no confiable (`198.51.100.7`) con `X-Real-IP: 1.2.3.4` → se usa el peer (test).
+  - `X-Real-IP` inválido → fallback al peer (test).
+  - **`X-API-Key` aleatorio por petición:** *bypass real* — el bucket incluía `sha256(X-API-Key)`; 3 peticiones con 3 valores distintos generaron **3 buckets distintos** (medido). Corregido en §VULN-032.
+  - Borde Nginx: `proxy_set_header X-Real-IP $remote_addr` **sobrescribe** la cabecera del cliente (verificado en la config y en la prueba local con nginx 1.30.4, §4).
+- **Evidencia ejecutada:** `pytest tests/test_rate_limit_hardening.py -q` → **7 passed** (4 de spoofing/resolución + 3 de fail-mode); `pytest tests/test_rate_limit_identity.py -q` → **8 passed** (incluye “random api-key ⇒ un solo bucket”).
+- **Residual:** `TRUSTED_PROXIES` por defecto incluye **todo RFC1918**: cualquier contenedor de la red Docker puede falsificar `X-Real-IP` (§VULN-038, MEDIUM/ACCEPTED).
 
-### [VULN-009] HIGH-06 — Dependencias con advisories HIGH/CRITICAL sin parche aplicado
+### [VULN-009] HIGH-06 — Dependencias con advisories HIGH/CRITICAL sin parche aplicado (SEC-FIX-006)
 - **Severity:** `HIGH` · **Categoría:** Supply chain (SCA)
-- **Ubicación:** `backend/requirements.txt:11,12,15,25,37`; `frontend/package.json:16` / `frontend/package-lock.json` (next 14.2.35)
-- **Estado:** `OPEN`
-- **Método:** `pip-audit`/`npm audit` **no disponibles** en el entorno (`command not found`, exit 127). Sustituto ejecutado: `POST https://api.osv.dev/v1/querybatch` con los 34 pins PyPI y los 469 paquetes del lockfile → exit 0.
-- **Hallazgos relevantes (OSV):**
-
-  | Paquete | Pin | Advisory | Sev. | Fix | Explotabilidad real en este código |
-  | :--- | :--- | :--- | :--- | :--- | :--- |
-  | `torch` | 2.5.1 | GHSA-53q9-r3pm-6pq6 (CVE-2025-32434) / GHSA-63cw-57p8-fm3p | CRITICAL/HIGH | ≥2.6.0 / ≥2.10.0 | `torch.load` vía `YOLO("yolov8n.pt")` con pesos descargados de red sin hash pinning (`yolo_loader.py:48-56`) → RCE si se compromete el artefacto |
-  | `next` | 14.2.35 | GHSA-2464, GHSA-2xp9, GHSA-p293, GHSA-89xv, GHSA-c4j6, GHSA-p9j2 (…26 advisories) | CRITICAL/HIGH | **sólo 15.5.x / 16.x** | Rama 14 EOL: no hay parche. RCE de Image Optimization no explotable (no se usa `next/image`); SSRF de rewrites no explotable (destino es env, no input) |
-  | `python-multipart` | 0.0.18 | GHSA-5rvq, GHSA-pp6c (DoS headers multipart), GHSA-mj87 | HIGH | ≥0.0.30 | **Sí** en `/api/osint/evidence/upload` (si se monta) — requiere JWT válido; Nginx limita body a 100 MB |
-  | `cryptography` | 44.0.0 | GHSA-537c / GHSA-jwv3 / GHSA-r6ph (OpenSSL wheels, path-building) | HIGH | ≥48.0.1 | No se usan PKCS#7/curvas SECT → no explotable; higiene obligatoria |
-  | `lxml` | 5.3.0 | GHSA-vfmq-68hx-4jfw (XXE en `iterparse`) | HIGH | ≥6.1.0 | Sólo se usa como parser HTML de BeautifulSoup → XXE no alcanzable |
-  | `python-jose` | 3.3.0 | GHSA-3qf3 / GHSA-6c5p (alg confusion), GHSA-cjwg (DoS JWE) | CRITICAL/MODERATE | ≥3.4.0 | `algorithms=["HS256"]` fijo y sin JWE → no explotable; debe actualizarse igualmente |
-  | npm | — | 15 paquetes (brace-expansion, minimatch, js-yaml, nanoid, postcss, glob, next…) | HIGH/MOD | varios | Mayoría dev/transitivas de build |
-
-- **Remediación:** (1) subir `python-jose>=3.4.0`, `python-multipart>=0.0.30`, `cryptography>=48.0.1`, `lxml>=6.1.0`, `torch>=2.6.0` (ideal ≥2.10) o eliminar torch/ultralytics del runtime de API; (2) plan de upgrade Next 15/16 con `next build` verificado; (3) pinear hash del modelo YOLO (`sha256`) antes de `torch.load`; (4) añadir `pip-audit`/`npm audit` a CI con `--audit-level=high`.
-- **Verificación requerida:** `pip-audit -r backend/requirements.txt` → 0 HIGH/CRITICAL; `npm audit --audit-level=high` → 0; `pytest tests -q` verde.
+- **Ubicación del fix:** `backend/requirements.txt`, `backend/requirements-vision.txt` (nuevo), `backend/app/services/vision/yolo_loader.py:55-105`, `frontend/package.json` / `frontend/package-lock.json`, `.github/workflows/ci.yml:54-74`, `docs/security/SCA_ALLOWLIST.md`
+- **Estado:** **`FIXED`** (re-verificado en esta sesión)
+- **Cambios verificados:** `torch`/`ultralytics` **fuera del runtime base** (`requirements-vision.txt` con `torch>=2.6.0`); `python-multipart 0.0.34` (OSV: sin advisories), `python-jose 3.5.0`, `cryptography 50.0.2`, `lxml 6.1.3`, `passlib 1.7.4`; `YOLOLoader._verify_integrity` exige `YOLO_MODEL_SHA256` y prohíbe descarga automática en production; Next **16.4.6** / React 19.3.1.
+- **Evidencia ejecutada:**
+  - `npm audit --omit=dev --audit-level=high` → **exit 0**, `found 0 vulnerabilities`.
+  - Los 9 pins nuevos existen en PyPI (consulta a `pypi.org/pypi/<pkg>/json`: `python-multipart 0.0.34`, `python-jose 3.5.0`, `passlib 1.7.4`, `cryptography 50.0.2`, `lxml 6.1.3`… → `latest` coincide) — corrige el riesgo de CI roto por versión inexistente.
+  - OSV sobre los **32 pins directos** → sólo `python-jose 3.5.0` (PYSEC-2026-4298, **sin fix upstream**, mitigado por `algorithms=["HS256"]`) y `pytest 8.3.4` (dev). Ambos en `docs/security/SCA_ALLOWLIST.md` y en los `--ignore-vuln` de CI.
+  - `pytest tests/test_vision_yolo_integrity.py -q` → **5 passed** (hash correcto, hash alterado, production sin hash, dev sin hash, descarga deshabilitada).
+- **Gate SCA ejecutado de verdad:** `python -m pip_audit -r backend/requirements.txt` con los 10 `--ignore-vuln` de CI → **exit 0**, `No known vulnerabilities found, 19 ignored` (~18 min; un primer intento con `timeout 400` abortó con **124**, por eso también se usó OSV por pin como verificación independiente).
+- **Residual:** `starlette 0.41.3` (transitiva de `fastapi 0.115.6`) mantiene 7 advisories PYSEC/GHSA aceptados con justificación (§VULN-039, MEDIUM/ACCEPTED-RISK), incluido un DoS HIGH por `Range` en `FileResponse` cuyo único consumidor está en módulos **no montados**.
 
 ### [VULN-010] MEDIUM-01 — Cadena de auditoría: persistencia best-effort, multi-proceso y callers en código no montado
 - **Severity:** `MEDIUM` · **Categoría:** Auditoría / Integridad
-- **Ubicación:** `backend/app/core/audit.py:41-101` (rehidratación por proceso, `except → logger.error` al persistir), `backend/app/api/osint/auth.py:321-352` (único caller con `db_session`)
-- **Estado:** `PARTIAL` (el fix de TASK-027 existe y los tests pasan, pero **no hay ninguna ruta viva que lo invoque**)
-- **Verificación ejecutada:** `pytest tests/test_audit_persistence.py tests/test_audit_unified.py -q` → **6 passed**. `grep -rn "_log_audit" backend/app/api` → sólo `osint/auth.py` (no montado).
+- **Ubicación:** `backend/app/core/audit.py:41-101` (rehidratación por proceso, `except → logger.error` al persistir), `backend/app/api/osint/auth.py:321-352` (helper), ahora invocado por la ruta viva `backend/app/api/auth.py:96-110`
+- **Estado:** `PARTIAL` (mejora real: el login fallido **ya persiste** en `audit_log`; sigue sin head único multi-proceso)
+- **Verificación ejecutada:** `pytest tests/test_login_lockout.py -q` → 2 passed (`test_failed_login_records_attempt_and_audit` verifica filas `AuditLog` con `action=LOGIN`, `success=False`); `pytest tests/test_audit_persistence.py tests/test_audit_unified.py -q` → 6 passed.
 - **Riesgo:** la cadena es tamper-evident en un proceso, pero con N workers/celery cada proceso mantiene su propio `last_hash` → cadenas ramificadas que rompen `verify_chain`; un fallo de DB se traga el evento (pérdida silenciosa de evidencia).
 - **Remediación:** head único en DB con `SELECT … FOR UPDATE` (o tabla `audit_head`), `record()` transaccional estricto (sin swallow), y llamada obligatoria en `/api/v1/auth/login|refresh|logout` y mutaciones sensibles.
 - **Verificación requerida:** test multi-proceso (dos `AuditChain` contra la misma DB) con cadena lineal; test que simule fallo de commit → excepción propagada.
@@ -186,12 +190,11 @@
 - **Estado:** `FIXED`
 - **Verificación:** `grep -n "MULTI_TENANT\|DEFAULT_TENANT_ID" backend/app/core/config.py backend/app/api/osint/deps.py` → definidos (default `False`/`"default"`) y consumidos con `getattr` seguro.
 
-### [VULN-013] N-06 — Rate-limit path-aware: implementado pero desconectado
+### [VULN-013] N-06 — Rate-limit path-aware: implementado y ahora conectado
 - **Severity:** `MEDIUM` · **Categoría:** Rate limiting
-- **Ubicación:** `backend/app/core/rate_limit.py:132-146` (`get_limiter_key`), `backend/app/core/rate_limit.py:95-100` (middleware con `endswith("/auth/login")`), consumidores sólo en `backend/app/api/osint/auth.py:128,150,160,186` (no montado)
-- **Estado:** `PARTIAL`
-- **Observación:** el middleware clasifica correctamente `/api/v1/auth/login` (login=5/60) y también `/api/v1/osint/auth/login`, pero **no** `/mfa/verify` ni `/refresh`; y el lockout por `(usuario,path)` no se usa en rutas vivas.
-- **Remediación:** aplicar `get_limiter_key` en el middleware/`/auth/login` y añadir límites específicos a `mfa/verify` y `refresh`.
+- **Ubicación:** `backend/app/core/rate_limit.py:132-146` (`get_limiter_key`) y `:149-170` (clasificación `endswith("/auth/login")`), consumidor vivo en `backend/app/api/auth.py:74-90`
+- **Estado:** **`FIXED`**
+- **Observación:** el lockout por `(usuario, path)` ya se usa en la ruta viva de login (path derivado de `scope["path"]`); el middleware mantiene el bucket `login` = 5/60 y añade el bucket por `sub`. Residual: `mfa/verify` no existe montado y `refresh` cae en el bucket `default` (adecuado, pero conviene un límite propio).
 
 ### [VULN-014] MEDIUM-03 — Ticket MFA: fallback de secreto y replay si Redis falla
 - **Severity:** `MEDIUM` · **Categoría:** Session / MFA
@@ -202,10 +205,11 @@
 
 ### [VULN-015] MEDIUM-04 — `/metrics` y documentación OpenAPI públicos a través de Nginx
 - **Severity:** `MEDIUM` · **Categoría:** Information disclosure
-- **Ubicación:** `backend/app/main.py:134-136` (`@app.get("/metrics")` sin auth), `backend/app/main.py:55-60` (`FastAPI(docs_url` por defecto)`, `backend/app/core/auth_middleware.py:PUBLIC_PATHS` (`/docs`, `/redoc`, `/openapi.json`), `infra/nginx.conf:26-27` (proxy de `/` → `:8000`)
-- **Estado:** `OPEN`
-- **PoC:** `curl -s https://host/metrics | head` → métricas Prometheus; `curl -s https://host/openapi.json | jq '.paths|keys|length'` → inventario completo de endpoints.
-- **Remediación:** `docs_url=None, redoc_url=None, openapi_url=None` en production; `/metrics` con `Depends(verify_metrics_token)` o `deny all` en Nginx salvo red de scraping.
+- **Ubicación:** `backend/app/main.py:148-160` (`/metrics` con token **opcional**), `backend/app/core/config.py:62` (`METRICS_TOKEN` default `""`), `backend/app/main.py:82-88` (FastAPI con `docs_url`/`openapi_url` por defecto), `backend/app/core/auth_middleware.py:PUBLIC_PATHS` (`/docs`, `/redoc`, `/openapi.json`), `infra/nginx.conf:26-27`
+- **Estado:** **`OPEN`** (parcialmente mitigado)
+- **Verificación ejecutada:** introspección → `/metrics`, `/docs`, `/redoc`, `/openapi.json` siguen registrados y públicos; el handler sólo compara `METRICS_TOKEN` **si está definido** (`if expected:`), y el validador de producción **no** exige ese token.
+- **PoC:** `curl -s https://host/metrics | head` y `curl -s https://host/openapi.json | jq '.paths|keys|length'` sin credenciales.
+- **Remediación:** exigir `METRICS_TOKEN` en production (validator) o `deny all` en Nginx salvo la red de scraping; `docs_url=None, redoc_url=None, openapi_url=None` cuando `ENVIRONMENT=production`.
 
 ### [VULN-016] MEDIUM-05 — Frontend: tokens en `localStorage` y sin cabeceras de seguridad
 - **Severity:** `MEDIUM` · **Categoría:** XSS/Session
@@ -304,55 +308,164 @@
 ### [VULN-031] LOW-06 — Advisories no explotables con el uso actual (lxml/python-jose/cryptography)
 - **Severity:** `LOW` · **Categoría:** Supply chain (residual)
 - **Ubicación:** ver VULN-009 (tabla)
-- **Estado:** `ACCEPTED-RISK` **temporal** — justificación: `lxml` sólo parsea HTML (no `iterparse`), `python-jose` fija `HS256` y no procesa JWE, `cryptography` no usa PKCS#7/SECT. **No exime** de la actualización (VULN-009 sigue `OPEN`).
+- **Estado:** `ACCEPTED-RISK` — tras SEC-FIX-006 sólo queda `python-jose 3.5.0` (PYSEC-2026-4298, **sin fix upstream**; `algorithms=["HS256"]` fijo y sin JWE ⇒ no explotable) y su transitiva `ecdsa` (no se usa). `lxml 6.1.3`, `cryptography 50.0.2` y `python-multipart 0.0.34` ya están actualizados y sin advisories conocidos (OSV por pin).
+
+---
+
+### [VULN-032] HIGH-07 (BYPASS REAL) — Bucket de rate-limit derivado de `X-API-Key` del cliente
+- **Severity:** `HIGH` (bypass de un control HIGH recién corregido) · **Categoría:** Rate limiting / DoS
+- **Ubicación (antes del fix):** `backend/app/core/rate_limit.py:143-148` — `api_key = request.headers.get("X-API-Key","")` y `key_parts.append(sha256(api_key)[:16])`
+- **Estado:** **`FIXED`** en esta sesión
+- **Por qué es HIGH:** `X-API-Key` es una cabecera **arbitraria del cliente** y no se valida en ningún middleware (`AuthMiddleware` sólo mira `Authorization`). Al formar parte de la clave del bucket, un atacante anónimo obtenía un bucket **nuevo por petición**:
+  - anulación práctica del límite `login` (5/min) y del límite `default` (100/min) → fuerza bruta/abuso a la velocidad del borde (30 r/s/IP) y crecimiento ilimitado de claves en Redis (`ratelimit:*`) hasta agotar memoria, lo que en producción activa el fail-closed → **503 para todos**;
+  - el `sub` bucket de SEC-FIX-004 no ayudaba: se aplica **además**, no en lugar del bucket por IP.
+- **PoC medido (antes del fix):** 3 peticiones desde la misma IP (`203.0.113.50`) a `/api/v1/auth/login` con `X-API-Key: garbage-{0,1,2}` →
+  `['login:203.0.113.50:6d633e…', 'login:203.0.113.50:927910…', 'login:203.0.113.50:65f9ff…']` → **3 buckets distintos**.
+- **Remediación aplicada:** el bucket se compone sólo de `resolve_client_ip()` + (si hay JWT verificado) `sub`; se eliminó el uso de `X-API-Key` y el `import hashlib` sobrante.
+- **Prueba de verificación ejecutada:** `pytest tests/test_rate_limit_identity.py -q` → **8 passed**, incluido `test_random_api_key_does_not_create_new_bucket` (3 cabeceras distintas ⇒ **1** bucket) y `test_login_bucket_is_still_classified_as_login`.
+- **Nota para el orchestrator:** si en el futuro se quiere rate-limit **por API key**, la clave debe validarse contra `settings.OPERATOR_API_KEYS` **antes** de usarla como identidad.
+
+### [VULN-033] MEDIUM-14 — `request.url.path` (Host poisoning, CVE-2026-48710) usado en decisiones de seguridad
+- **Severity:** `MEDIUM` · **Categoría:** AuthZ/Rate-limiting — input no confiable
+- **Ubicación (antes del fix):** `backend/app/core/auth_middleware.py:33` (`PUBLIC_PATHS`), `backend/app/core/rate_limit.py:149` (clasificación), `backend/app/api/auth.py:75` (clave de lockout), `backend/app/api/osint/auth.py:370,409,489` (mismo patrón), `backend/app/main.py:123`
+- **Estado:** **`FIXED`** en esta sesión
+- **Evidencia del mecanismo (ejecutada):** con el pin real `starlette==0.41.3` (venv aislado), `URL(scope=...)` construye `f"{scheme}://{Host}{path}"`:
+  `Host='api.sesis.local'` → `url.path='/api/v1/auth/login'`; `Host='api.sesis.local/x'` → `url.path='/x/api/v1/auth/login'` (mientras `scope["path"]` no cambia). Consecuencia: la **clave de lockout** (`f"{username}:{request.url.path}"`) cambiaba por variante de Host ⇒ fuerza bruta sin lockout, y `PUBLIC_PATHS` se evaluaba sobre un valor influenciable.
+- **Alcance real medido (por eso MEDIUM y no HIGH):** en el borde desplegado **no es alcanzable**: nginx 1.30.4 responde **400 Bad Request** a `Host: api.sesis.local/x` (probado con una instancia local y un upstream que refleja cabeceras); `Host: api.sesis.local%2Fx` viaja literal (`api.sesis.local%2fx`) sin mover el path; y en `ENVIRONMENT=production` `TrustedHostMiddleware` sólo admite `api.sesis.local`. Era, por tanto, un defecto latente que se habría activado al cambiar el proxy o desplegar en staging.
+- **Remediación aplicada:** helper `request_path(request)` (`scope["path"]` con fallback `/`) usado en `AuthMiddleware`, `RateLimitMiddleware`, `/api/v1/auth/login`, `main.py` y el módulo OSINT (código muerto incluido, para no dejar el patrón).
+- **Prueba de verificación ejecutada:** `pytest tests/test_rate_limit_identity.py -q` → 8 passed (`test_host_header_with_path_cannot_change_routing_path`, `test_host_header_does_not_change_public_path_detection`, `test_empty_scope_path_falls_back_to_root`).
+
+### [VULN-034] MEDIUM-15 (BYpass de fail-closed) — `NameError` en la rama “deny” del lockout
+- **Severity:** `MEDIUM` · **Categoría:** Fail-closed / Correctness
+- **Ubicación (antes del fix):** `backend/app/api/osint/auth.py:150` — `logger.error(...)` sin `logger` definido en el módulo
+- **Estado:** **`FIXED`** en esta sesión
+- **Cómo se encontró:** sonda directa `BruteForceProtector.is_locked` con Redis caído y `SECURITY_FAIL_MODE=closed` → `NameError: name 'logger' is not defined` (en vez de `return True`). El deny se cumplía “por accidente” vía 500, sin `Retry-After`, sin métrica y con traza en logs.
+- **Remediación aplicada:** `import logging` + `logger = logging.getLogger(__name__)` en el módulo.
+- **Prueba de verificación ejecutada:** `pytest tests/test_rate_limit_identity.py -q` → `TestBruteForceFailMode`: closed ⇒ `is_locked is True`; open ⇒ `False` (2 passed).
+
+### [VULN-035] MEDIUM-16 — MFA no se aplica en ninguna ruta viva
+- **Severity:** `MEDIUM` · **Categoría:** Autenticación / control ausente
+- **Ubicación:** `backend/app/api/auth.py:60-120` (no consulta `two_factor_enabled` ni emite challenge), `backend/app/core/config.py:22` (**`MFA_ENABLED` definido y sin uso**: `grep -rn MFA_ENABLED backend/app` → sólo config), `backend/app/api/intel/deps_classified.py:32-92` (`require_mfa_verified_user` **sin consumidores**; `/api/v1/classified` no está montado — introspección: `[]`)
+- **Estado:** `OPEN`
+- **Impacto:** con usuario+contraseña correctos se emiten `access`+`refresh` con el `clearance` del usuario (el admin sembrado es `TOP_SECRET`) **sin segundo factor**. El flag por defecto `MFA_ENABLED=true` es decorativo.
+- **PoC:** `curl -s -X POST https://host/api/v1/auth/login -d '{"username":"admin","password":"<válida>"}' -H 'Content-Type: application/json'` → tokens de acceso completos, sin challenge.
+- **Remediación:** montar el flujo MFA (challenge de un solo uso + `/mfa/verify`) en `/api/v1/auth/*` y exigir `mfa_verified=true` para `clearance >= CONFIDENTIAL`; o montar `/api/v1/classified` con `require_mfa_verified_user`. Hasta entonces, **no anunciar MFA como control activo**.
+- **Nota:** no lo clasifico HIGH porque requiere credencial válida y no es un bypass de los fixes auditados, pero **es el MEDIUM que priorizaría antes de exponer el sistema**.
+
+### [VULN-036] MEDIUM-17 — DoS de cuenta vía lockout (bloqueo renovable)
+- **Severity:** `MEDIUM` · **Categoría:** Availability
+- **Ubicación:** `backend/app/api/osint/auth.py:121-152` (`MAX_ATTEMPTS=5`, `WINDOW=300`, `lockout` TTL `WINDOW*2`), consumido por `backend/app/api/auth.py:77-84`
+- **Estado:** `OPEN`
+- **PoC:** 5 `POST /api/v1/auth/login` fallidos contra `admin` cada 10 minutos → la cuenta queda bloqueada de forma sostenida para el usuario legítimo (el nombre `admin` es el sembrado por defecto). No requiere autenticación.
+- **Remediación:** combinar lockout por cuenta con IP/reputación (bloquear la IP tras N cuentas distintas), backoff exponencial en lugar de bloqueo duro, CAPTCHA/proof-of-work tras 3 fallos y alerta a operaciones; desbloqueo administrativo.
+
+### [VULN-037] MEDIUM-18 — `revoke_jti` (escritura) sigue fail-open: `logout` puede ser un no-op
+- **Severity:** `MEDIUM` · **Categoría:** Session management
+- **Ubicación:** `backend/app/core/security.py:155-163` (`except Exception: logger.warning(...)`, sin deny ni error al cliente)
+- **Estado:** `OPEN`
+- **Impacto:** si Redis falla al **escribir** (pero responde a lecturas), `logout` devuelve éxito sin revocar: el token sigue siendo aceptado (`is_jti_revoked` consulta Redis y no lo encuentra) hasta `exp` (15 min). La lectura ya es fail-closed (§VULN-007), la escritura no.
+- **Remediación:** propagar el fallo (503) en modo closed; o escribir la revocación en DB como respaldo y reconciliar.
+- **Verificación propuesta:** test que parchea `setex` con excepción → `logout` 503 en production.
+
+### [VULN-038] MEDIUM-19 — `TRUSTED_PROXIES` incluye todo RFC1918: peer interno puede falsificar `X-Real-IP`
+- **Severity:** `MEDIUM` · **Categoría:** Rate limiting / trust boundary
+- **Ubicación:** `backend/app/core/config.py:63-66` (`127.0.0.1,::1,10/8,172.16/12,192.168/16`)
+- **Estado:** `ACCEPTED-RISK` (con condición)
+- **Análisis:** es necesario que nginx (red Docker `172.x`) sea “confiable”; el efecto colateral es que **cualquier** contenedor de la red (frontend, celery, ollama, un servicio comprometido o un SSRF con capacidad de petición interna) puede fijar `X-Real-IP` y elegir su bucket/lockout-key. No permite escalar privilegios ni evadir la autenticación; sólo afloja el rate-limit desde dentro de la red.
+- **Remediación futura:** `TRUSTED_PROXIES=<IP fija de nginx>/32` por entorno (o `172.18.0.2/32`) y `deny` de `:8000` fuera de nginx.
+
+### [VULN-039] MEDIUM-20 — Residuales SCA en `starlette 0.41.3` (allowlist)
+- **Severity:** `MEDIUM` · **Categoría:** Supply chain (aceptado)
+- **Ubicación:** `backend/requirements.txt:1` (`fastapi==0.115.6` → `starlette 0.41.3`), `docs/security/SCA_ALLOWLIST.md`, `.github/workflows/ci.yml:57-67`
+- **Estado:** `ACCEPTED-RISK` (expira: FASE 10)
+- **Inventario (OSV):** PYSEC-2026-1941/GHSA-2c2j (DoS multipart, MODERATE), **PYSEC-2026-1942/GHSA-7f5h (DoS `Range` en `FileResponse`, HIGH)**, PYSEC-2026-161/GHSA-86qp (“BadHost”: path reconstruido desde Host → cubierto en código por §VULN-033), PYSEC-2026-2281/GHSA-wqp7 (**Windows-only**, SSRF UNC en StaticFiles), PYSEC-2026-2280/GHSA-x746 (`HTTPEndpoint`), PYSEC-2026-249/GHSA-82w8 (DoS `urlencoded`), PYSEC-2026-248/GHSA-jp82 (path en authority).
+- **Por qué se acepta:** `FileResponse` sólo existe en `app/api/osint/{evidence,reports}.py` (**no montados**); no hay `StaticFiles`; los formularios `urlencoded` no se usan en rutas vivas (los bodies son Pydantic JSON); el despliegue es Linux; `HTTPEndpoint` no se usa. **Condición de elevación:** montar OSINT evidence/reports, añadir `StaticFiles`, aceptar formularios en endpoints públicos o desplegar en Windows ⇒ estos advisories pasan a HIGH y bloquean el release.
+
+### [VULN-040] MEDIUM-21 — `Admin` puede registrarse como cuenta distinta de `admin` (sin normalización)
+- **Severity:** `MEDIUM` · **Categoría:** Identity / Audit integrity
+- **Ubicación:** `backend/app/api/auth.py:86-120` (registro), `backend/app/db/models/persistence.py:353` (`username = Column(String, unique=True)` sin `citext`/normalización), login con igualdad exacta
+- **Estado:** `OPEN`
+- **Evidencia:** probado en SQL que `'Admin'`, `'ADMIN'`, `'admin '` **no** coinciden con `'admin'`; el registro público sólo comprueba igualdad exacta ⇒ se puede crear `Admin`/`admín` (confusable) sin colisión. No otorga privilegios (el nuevo usuario es `operator`/`RESTRICTED`/`is_active=False`), pero contamina auditoría y habilita phishing interno.
+- **Remediación:** `username` normalizado (`strip().lower()`) + índice único funcional (`lower(username)`) + rechazo de homoglifos/espacios.
 
 ---
 
 ## 4. AUTOMATED SECURITY TOOLING LOG
 
-| # | Tool / Command | Scope | Exit Code | Resultado real |
+| # | Tool / Command | Scope | Exit Code | Resultado real (re-auditoría de cierre) |
 | :--- | :--- | :--- | :--- | :--- |
-| 1 | `cd backend && SECRET_KEY="test-secret-key-32-chars-minimum!!!" python3 -m pytest tests -q` | Suite completa (árbol final) | **0** | `142 passed, 1001 warnings in 13.97s` (incluye 4 archivos de test añadidos por trabajo concurrente) |
-| 2 | Igual, inmediatamente después de mis fixes (antes del commit concurrente) | Suite post-fix | **0** | `74 passed, 522 warnings in 9.20s` |
-| 3 | Igual, retirando `tests/test_vision_ssrf.py` (baseline en ese momento) | Suite pre-fix | **0** | `64 passed` — **el dato "49 passed" del contexto de la tarea corresponde al commit `9581712`; no es reproducible en el árbol actual** |
-| 4 | `pytest tests/test_ssrf.py -q` | SSRF OSINT | **0** | `18 passed` (el contexto decía 12) |
-| 5 | `pytest tests/test_audit_persistence.py tests/test_audit_unified.py -q` | Audit chain | **0** | `3 + 3 passed` |
-| 6 | `pytest tests/test_mfa_security.py tests/test_rate_limit.py tests/test_events_dlq.py -q` | MFA/rate/DLQ | **0** | `3 + 6 + 3 passed` |
-| 7 | `python3 -m compileall -q app` | Sintaxis backend | **0** | OK tras los fixes |
-| 8 | `SECRET_KEY=… python3 ../scripts/validate_all.py` | Validador de proyecto | **0** | `Overall Status: VALIDATED` (`142 passed`, 4 invariantes PASS) |
-| 9 | Introspección `app.routes` + walk de `route.dependant` | Cobertura authz | **0** | 172 rutas; **0** endpoints autenticados sin `require_clearance`; 6 públicos |
-| 10 | `grep -rn "eval(\|exec(\|os.system\|shell=True\|pickle.loads\|yaml.load(" backend/app frontend/src` | RCE/Injection | **1** | 0 coincidencias (limpio) |
-| 11 | `grep -rn 'execute(f"\|text(f"\|f"SELECT' backend/app` | SQLi | **1** | 0 coincidencias (limpio) |
-| 12 | `grep -n admin123 docker-compose.yml docker-compose.demo.yml .env.example` | Credenciales default | **1** | 0 coincidencias (post-fix) |
-| 13 | `ENVIRONMENT=production … python -c "Settings()"` con placeholders | Hardening prod | **1** (esperado) | `Refusing to start`: SECRET_KEY/ADMIN_INITIAL_PASSWORD inseguros |
-| 14 | `python -c "SatelliteAnalyst()._download_image(<url interna>)"` | SSRF v3 | **0** | 4/4 URLs bloqueadas (`169.254.169.254`, `127.0.0.1`, `10.0.0.5`, `[::1]`) |
-| 15 | `pytest tests/test_vision_ssrf.py -q` (nuevo) | Regresión SSRF visión | **0** | `10 passed` |
-| 16 | `curl -sS https://api.osv.dev/v1/querybatch` (34 pins PyPI) | SCA Python | **0** | 6 paquetes con advisories (ver VULN-009) |
-| 17 | `curl -sS https://api.osv.dev/v1/querybatch` (469 pkgs npm del lockfile) | SCA Node | **0** | 15 paquetes con advisories |
-| 18 | `npm audit --audit-level=high` | SCA Node (oficial) | **127** | **No ejecutable:** `npm` no instalado en el entorno |
-| 19 | `pip-audit -r backend/requirements.txt` | SCA Python (oficial) | **127** | **No ejecutable:** `pip-audit` no instalado |
-| 20 | `docker compose config` | Compose válido | **127** | **No ejecutable:** `docker` no disponible |
-| 21 | `bandit` / `semgrep` / `trivy` | SAST | **127** | No instalados → sustituido por revisión manual + greps dirigidos |
-| 22 | `git diff -U0 backend/tests/ \| grep '^-[^-]'` | Integridad de tests | **1** | **0 líneas eliminadas en tests** por esta auditoría (no se han debilitado tests) |
-| 23 | `git ls-files \| grep -Ei '\.env|fernet|\.key|\.pem'` | Secretos commiteados | **0** | Solo `.env.example` y `frontend/.env.local.example` (plantillas) |
+| 1 | `cd backend && SECRET_KEY="test-secret-key-32-chars-minimum!!!" python3 -m pytest tests -q` | Suite completa | **0** | `169 passed, 1999 warnings in 56.25s` |
+| 2 | `python3 ../scripts/validate_all.py` | Validador de proyecto | **0** | `169 passed` + `Overall Status: VALIDATED` |
+| 3 | `python3 -m compileall -q app` | Sintaxis backend | **0** | OK (tras fixes de `rate_limit`, `auth_middleware`, `auth`, `osint/auth`, `main`) |
+| 4 | `pytest tests/test_login_lockout.py -q` | SEC-FIX-005 (lockout vivo) | **0** | **2 passed** (429 + `Retry-After: 60`; `AuditLog` persistido) |
+| 5 | `pytest tests/test_rate_limit_hardening.py -q` | SEC-FIX-001/004 | **0** | **7 passed** (4 spoofing/IP + 3 fail-mode 503/200) |
+| 6 | `pytest tests/test_rate_limit_identity.py -q` (nuevo) | SEC-FIX-009/010 + bypasses | **0** | **8 passed** (Host poisoning, X-API-Key, fail-closed lockout) |
+| 7 | `pytest tests/test_security_core.py -q` | JWT/revocación/fail-closed | **0** | **34 passed** (open dev / closed prod 503) |
+| 8 | `pytest tests/test_vision_yolo_integrity.py -q` | SEC-FIX-006 (hash YOLO) | **0** | **5 passed** |
+| 9 | `npm audit --omit=dev --audit-level=high` (`/tmp/opencode/node20/bin`) | SCA Node (oficial) | **0** | `found 0 vulnerabilities` |
+| 10 | `python -m pip_audit -r backend/requirements.txt --ignore-vuln …` (10 IDs de allowlist) | SCA Python (oficial) | **0** | `No known vulnerabilities found, 19 ignored` (~18 min; un intento previo con `timeout 400` → **124**) |
+| 11 | `pip-audit` sin ignores (diagnóstico) | SCA Python | **124** | timeout 400 s → se sustituye por OSV por pin (§12) |
+| 12 | `POST https://api.osv.dev/v1/querybatch` (32 pins directos PyPI) | SCA Python | **0** | Sólo `python-jose 3.5.0` (sin fix upstream) y `pytest 8.3.4` (dev) → allowlist |
+| 13 | `GET https://pypi.org/pypi/<pkg>/json` (9 pins nuevos) | Existencia de versiones | **0** | Todos existen (`multipart 0.0.34`, `jose 3.5.0`, `passlib 1.7.4`, `cryptography 50.0.2`, `lxml 6.1.3`…) |
+| 14 | Introspección `app.routes` + walk de `route.dependant` | Cobertura authz | **0** | **180 `APIRoute`**; 6 públicas; 2 auth sin clearance (`/auth/logout`, `/auth/me`); `/api/v1/classified` **no montado** (`[]`) |
+| 15 | Sonda `BruteForceProtector.is_locked` con Redis caído (dev/open vs prod/closed) | Fail-closed lockout | **0** | open → `False`; closed → `NameError` detectado (§VULN-034) → corregido → `True` |
+| 16 | Sonda de bucket con `X-API-Key` aleatorio ×3 (antes del fix) | Bypass rate-limit | **0** | **3 buckets distintos** → §VULN-032 |
+| 17 | `python -m venv /tmp/... && pip install starlette==0.41.3` + `Request.url.path` con Host manipulado | CVE-2026-48710 | **0** | `Host='x'` → `url.path='/x/api/v1/auth/login'` vs `scope['path']='/api/v1/auth/login'` |
+| 18 | nginx 1.30.4 local + upstream que refleja cabeceras (`Host: api.sesis.local/x`, `%2Fx`, `.`) | Borde real | **0** | `/x` → **400**; `%2Fx` → host literal `api.sesis.local%2fx`; `.` → normalizado → **bypass no alcanzable** |
+| 19 | SQLite: `SELECT … WHERE username=` con `admin`, `Admin`, `ADMIN`, `admin `, ` admin` | Bypass de lockout por case | **0** | Sólo `admin` coincide → no hay bypass de adivinación |
+| 20 | `grep -rn "eval(\|exec(\|os.system\|shell=True\|pickle.loads\|yaml.load("` | RCE/Injection | **1** | 0 coincidencias (limpio) |
+| 21 | `grep -rn 'execute(f"\|text(f"\|f"SELECT'` | SQLi | **1** | 0 coincidencias (limpio) |
+| 22 | `grep -rn FileResponse\|StaticFiles backend/app` | Alcance advisories starlette | **0** | Sólo `osint/evidence.py` y `osint/reports.py` (**no montados**) |
+| 23 | `pytest tests/test_ssrf.py -q` / `test_vision_ssrf.py -q` | SSRF | **0** | 18 passed / 10 passed |
+| 24 | `pytest tests/test_audit_persistence.py tests/test_audit_unified.py -q` | Audit chain | **0** | 6 passed |
+| 25 | `docker compose config` | Compose válido | **127** | **No ejecutable:** `docker` no disponible |
+| 26 | `bandit` / `semgrep` / `trivy` | SAST | **127** | No instalados → revisión manual + greps dirigidos |
+| 27 | `git diff -U0 backend/tests/ \| grep '^-[^-]'` | Integridad de tests | **1** | **0 líneas eliminadas** en tests existentes (solo se añaden suites nuevas) |
+| 28 | `git ls-files \| grep -Ei '\.env|fernet|\.key|\.pem'` | Secretos commiteados | **0** | Solo `.env.example` y `frontend/.env.local.example` |
 
-> **Limitaciones declaradas:** sin `docker`, `npm`, `npm audit`, `pip-audit`, `bandit`, `semgrep` ni `trivy` en el entorno; el SCA se hizo contra OSV (fuente oficial de advisories) con los pins exactos. No se ejecutó la app en contenedores, por lo que los PoC de red (VULN-007/008/015/017) son derivados por inspección + configuración por defecto de uvicorn/Nginx, no por explotación en vivo.
+> **Limitaciones declaradas:** `docker`, `bandit`, `semgrep` y `trivy` **no** están disponibles; `npm audit` y `pip-audit` **sí** se ejecutaron (exit 0). Los PoC de red se validaron con instancias locales reales (nginx 1.30.4 + upstream reflector, venv con `starlette==0.41.3`) en lugar de con el stack completo en contenedores. `tsc`/`next build` **no** se reprodujeron (sin `node_modules`; el orquestador reporta OK). No se ha ejecutado explotación contra un despliegue vivo: todo es local/laboratorio.
 
 ---
 
 ## 5. FINAL RELEASE SIGN-OFF
 
-- **All `CRITICAL` findings resolved & verified:** `YES` — 0 abiertos (VULN-001/002 `FIXED`; verificación unitaria reproducida).
-- **All `HIGH` findings resolved & verified:** **`NO`** — 3 `FIXED` (VULN-003, VULN-004, VULN-005) y **4 `OPEN`**: VULN-006 (brute-force login vivo), VULN-007 (fail-open Redis), VULN-008 (rate-limit global tras proxy), VULN-009 (dependencias HIGH/CRITICAL).
-- **Open MEDIUM:** 10 `OPEN` + 3 `PARTIAL` (VULN-010, 013, 021) → total 13 pendientes de MEDIUM.
-- **Ready for Production Delivery:** **`BLOCKED`** — exit gate descalificado por 4 hallazgos `HIGH` abiertos; ver `SEC-FIX-001`, `SEC-FIX-004`, `SEC-FIX-005`, `SEC-FIX-006` en `.factory/TASKS.md`.
+- **All `CRITICAL` findings resolved & verified:** `YES` — 0 abiertos (VULN-001/002 `FIXED`).
+- **All `HIGH` findings resolved & verified:** **`YES` — 0 abiertos.** 8 `HIGH` totales, todos `FIXED` con evidencia ejecutable:
 
-**Cambios de código aplicados por el auditor (solo fixes HIGH, sin tocar tests existentes):**
+| ID | HIGH | Estado | Evidencia de cierre (ejecutada) |
+| :--- | :--- | :--- | :--- |
+| VULN-003 | Credenciales por defecto publicadas | `FIXED` | `grep admin123` → 0; `Settings()` en production con placeholders → `Refusing to start` |
+| VULN-004 | SSRF TOCTOU OSINT | `FIXED` | `pytest tests/test_ssrf.py` → 18 passed |
+| VULN-005 | SSRF visión/Maven | `FIXED` | `pytest tests/test_vision_ssrf.py` → 10 passed |
+| **VULN-006** | Brute-force login vivo | **`FIXED`** | `pytest tests/test_login_lockout.py` → 2 passed (429 + auditoría); bypasses de case/Host/API-key probados |
+| **VULN-007** | Fail-open sin Redis | **`FIXED`** | `pytest tests/test_rate_limit_hardening.py` 7 / `test_security_core.py` 34 / `test_rate_limit_identity.py` 8 |
+| **VULN-008** | IP real tras proxy | **`FIXED`** | 4 tests de spoofing + bucket `sub`; nginx sobrescribe `X-Real-IP` (medido) |
+| **VULN-009** | Dependencias HIGH/CRITICAL | **`FIXED`** | `npm audit` → 0; `pip-audit` (gate CI) → `No known vulnerabilities found, 19 ignored`, exit 0 |
+| **VULN-032** | Bypass rate-limit vía `X-API-Key` (nuevo) | **`FIXED`** | 3 buckets antes / **1** después (`test_random_api_key_does_not_create_new_bucket`) |
+
+- **MEDIUM:** 23 totales → `FIXED` 5 · `PARTIAL` 2 (VULN-010, 021) · `ACCEPTED-RISK` 2 (VULN-038, 039) · **`OPEN` 14** (VULN-014, 015, 016, 017, 018, 019, 020, 022, 023, 024, 035, 036, 037, 040).
+- **LOW:** 7 totales → `OPEN` 4 (VULN-026, 027, 029, 030) · `ACCEPTED-RISK` 3 (VULN-025, 028, 031).
+- **Ready for Production Delivery:** **`APPROVED`** — 0 CRITICAL y 0 HIGH abiertos.
+
+**Condiciones que el despliegue DEBE cumplir para que este `APPROVED` sea válido** (si no, el veredicto no aplica):
+1. `ENVIRONMENT=production` (o `staging`) y `PRODUCTION=true`; el modo fail-closed se deriva de ahí (§VULN-007). El `docker-compose.yml` por defecto es `development` ⇒ controles fail-closed **apagados** (§VULN-040).
+2. `SECRET_KEY`, `ADMIN_INITIAL_PASSWORD` (≥10, sin placeholders), `MFA_ENCRYPTION_KEY` (64 hex), `NEO4J_PASSWORD`, `GRAFANA_ADMIN_PASSWORD` propios del despliegue (validador de arranque).
+3. `METRICS_TOKEN` definido **o** `/metrics` y `/docs` bloqueados en Nginx (§VULN-015 sigue abierto).
+4. `YOLO_MODEL_SHA256` fijado si se despliega el stack de visión.
+5. **No** montar los módulos OSINT/CASES/EVIDENCE/`/api/v1/classified` sin cerrar antes VULN-014/020/022/035 (hoy están fuera del runtime y eso forma parte de por qué no hay HIGH abiertos).
+
+**Cambios de código aplicados en esta re-auditoría (fixes pequeños + tests nuevos, sin tocar tests existentes):**
 
 | Fix | Archivos | Verificación |
 | :--- | :--- | :--- |
-| SEC-FIX-002 (SSRF visión) | `backend/app/services/vision/analyst.py`, `backend/app/api/v3/router.py`, `backend/tests/test_vision_ssrf.py` (nuevo) | `pytest tests/test_vision_ssrf.py` → 10 passed; `pytest tests` → 142 passed |
-| SEC-FIX-003 (credenciales) | `.env.example`, `docker-compose.yml`, `docker-compose.demo.yml`, `backend/app/core/config.py` | `grep admin123` → 0; `Settings()` en production → rechaza; `pytest tests` → 142 passed |
+| SEC-FIX-009 (Host→path) | `backend/app/core/rate_limit.py` (`request_path`), `backend/app/core/auth_middleware.py`, `backend/app/api/auth.py`, `backend/app/api/osint/auth.py`, `backend/app/main.py` | `pytest tests/test_rate_limit_identity.py` → 8 passed |
+| SEC-FIX-010 (bucket por `X-API-Key`) | `backend/app/core/rate_limit.py` | ídem (`test_random_api_key_does_not_create_new_bucket`) |
+| SEC-FIX-001-bis (`logger` en fail-closed) | `backend/app/api/osint/auth.py` | ídem (`TestBruteForceFailMode`: closed⇒deny, open⇒allow) |
+
+**Riesgos que NO oculto aunque el gate esté en verde:**
+- **VULN-035 (MFA no aplicado):** el sistema anuncia MFA (`MFA_ENABLED=true`) pero **ninguna ruta lo exige**. Es el primer MEDIUM a cerrar antes de exponer el sistema a Internet.
+- **VULN-015/016/017/018:** `/metrics` y `/docs` públicos, tokens en `localStorage`, frontend sin CSP/HSTS y Redis/NATS sin auth.
+- **VULN-010/022:** la cadena de auditoría no es fiable multi-proceso y gran parte de los controles auditados (MFA, evidencia, custodia) viven en routers **no montados**.
 
 ---
 
@@ -360,13 +473,17 @@
 
 | FASE | Título | TAREA/ID(s) |
 |---|---|---|
-| FASE 3 (cierre) | Remediar los 4 HIGH abiertos | `SEC-FIX-001` (fail-open), `SEC-FIX-002` ✅, `SEC-FIX-003` ✅, `SEC-FIX-004` (rate-limit proxy), `SEC-FIX-005` (lockout vivo), `SEC-FIX-006` (dependencias) |
-| FASE 3 | MEDIUM de hardening | VULN-015 (`/metrics`), VULN-016 (tokens/headers frontend), VULN-017 (Nginx), VULN-018 (Redis/NATS auth), VULN-024 (separación de claves) |
-| FASE 3 | Integridad de auditoría | VULN-010 (head único en DB), VULN-022 (decidir montaje de OSINT), VULN-020 (media antes de montar) |
-| FASE 5 | Testing de seguridad | suites: brute-force vivo, fail-closed Redis, SSRF visión (✅ añadida), XFF/rate-limit, headers Nginx, multi-worker audit chain |
-| FASE 5 | SCA en CI | `pip-audit` + `npm audit --audit-level=high` bloqueantes; renovar `requirements.txt` y Next 15/16 |
-| FASE 6 | Observabilidad de seguridad | alertas `security_fail_open_total`, `auth_failure_total`, `ssrf_block_total` |
+| FASE 3 (cerrado) | 4 HIGH + bypass | `SEC-FIX-001` ✅, `SEC-FIX-002` ✅, `SEC-FIX-003` ✅, `SEC-FIX-004` ✅, `SEC-FIX-005` ✅, `SEC-FIX-006` ✅, `SEC-FIX-009` ✅, `SEC-FIX-010` ✅ |
+| **FASE 3.b (prioridad máxima)** | MFA real | `SEC-FIX-011`: challenge + `/mfa/verify` en `/api/v1/auth/*`, `mfa_verified=true` para `clearance >= CONFIDENTIAL`; montar `/api/v1/classified` con `require_mfa_verified_user` (VULN-035) |
+| FASE 3.b | Lockout sin DoS | `SEC-FIX-012`: backoff exponencial + bloqueo por IP/reputación, no bloqueo duro de cuenta; alerta (VULN-036) |
+| FASE 3.b | Revocación fail-closed | `SEC-FIX-013`: `revoke_jti` propaga 503 en closed o persiste en DB (VULN-037) |
+| FASE 3.b | Hardening perimetral | `SEC-FIX-007`: `/metrics`+`/docs` cerrados en production, `headers()` en Next, `next start`, `limit_req zone=auth`, `server_tokens off`, `requirepass` Redis/NATS (VULN-015/016/017/018) |
+| FASE 3.b | Identidad | `SEC-FIX-014`: normalización de `username` + índice único `lower(username)` (VULN-040) |
+| FASE 3.b | Auditoría | `SEC-FIX-008`: head único en DB + persistencia estricta + decisión sobre routers OSINT no montados (VULN-010/022) |
+| FASE 5 | Testing de seguridad | ya añadidas: `test_rate_limit_identity.py` (8), `test_login_lockout.py` (2), `test_rate_limit_hardening.py` (7), `test_vision_yolo_integrity.py` (5), `test_vision_ssrf.py` (10) |
+| FASE 5 | SCA en CI | gate bloqueante ya activo (`pip-audit` + `npm audit --omit=dev --audit-level=high`); revisar allowlist en FASE 10 |
+| FASE 6 | Observabilidad | alertas sobre `sesis_security_fail_open_total{component}`, `auth_failure`, `ssrf_block_total` |
 
-**Registro de pendientes:** FASE 3: `SEC-FIX-001`, `SEC-FIX-004`, `SEC-FIX-005`, `SEC-FIX-006` + MEDIUM anteriores. FASE 5: suites de regresión y SCA bloqueante.
+**Registro de pendientes:** MEDIUM abiertos: VULN-014, 015, 016, 017, 018, 019, 020, 022, 023, 024, 035, 036, 037, 040 (+ PARTIAL 010, 021). Aceptados con fecha de revisión: VULN-038 (IP fija de nginx), VULN-039 (starlette, FASE 10).
 
-**Plan de descalificación del `BLOCKED`:** cerrar VULN-006/007/008/009 con evidencia ejecutable (tests nuevos + `pip-audit`/`npm audit` sin HIGH) y re-ejecutar este informe. Solo entonces `Ready for Production Delivery: APPROVED`.
+**Plan de reapertura del gate:** cualquier cambio que (a) monte `FileResponse`/`StaticFiles`/formularios públicos, (b) cambie el proxy de borde o desactive `TrustedHostMiddleware`, (c) añada una decisión de seguridad basada en `request.url.*`, (d) desactive el fail-closed o el lockout, o (e) degrade `ENVIRONMENT` a `development` en el despliegue, **invalida este `APPROVED`** y exige repetir esta auditoría.

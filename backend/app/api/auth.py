@@ -69,10 +69,11 @@ async def login(
     de `/api/v1/auth/login` no se mezcla con el de MFA u otros endpoints.
     """
     from app.api.osint.auth import BruteForceProtector, _log_audit
-    from app.core.rate_limit import resolve_client_ip
+    from app.core.rate_limit import request_path, resolve_client_ip
 
     client_ip = resolve_client_ip(request)
-    path = request.url.path
+    # SEC-FIX-009: scope["path"], no request.url.path (poisonable vía Host).
+    path = request_path(request)
 
     if await BruteForceProtector.is_locked(payload.username, path):
         remaining = await BruteForceProtector.get_remaining_attempts(payload.username, path)
