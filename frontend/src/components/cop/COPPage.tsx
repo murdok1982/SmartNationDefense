@@ -1,16 +1,12 @@
 "use client";
+
 import dynamic from "next/dynamic";
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState, type ReactElement } from "react";
 import { useCOPStore } from "@/store/cop-store";
 import { useAuthStore } from "@/store/auth-store";
 import ClassificationBanner from "./ClassificationBanner";
 import StatusBar from "./StatusBar";
 import MissionClock from "./MissionClock";
-import AlertTicker from "./AlertTicker";
-import IntelFeed from "./IntelFeed";
-import ThreatPanel from "./ThreatPanel";
-import CommandInput from "./CommandInput";
-import QuickActions from "./QuickActions";
 import MessagingPanel from "./MessagingPanel";
 import TerrainAnalysis from "./TerrainAnalysis";
 import LogisticsPanel from "./LogisticsPanel";
@@ -22,36 +18,106 @@ import VoiceCommand from "./VoiceCommand";
 import TacticalMapEnhanced from "./TacticalMapEnhanced";
 import MultiMonitor from "./MultiMonitor";
 import MavenPanel from "./MavenPanel";
+import OverviewDashboard from "./OverviewDashboard";
 import {
-  Map, MessageSquare, Mountain, Package, Clock, FileText,
-  Target, Mic, Layers, Layout, Satellite, ChevronLeft, ChevronRight,
+  Activity,
+  ChevronRight,
+  Clock,
+  FileText,
+  Layers,
+  Layout,
+  Map,
+  MessageSquare,
+  Mic,
+  Mountain,
+  Package,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Radar,
+  Satellite,
+  Search,
+  Shield,
+  Target,
 } from "lucide-react";
-import type { UnitPosition } from "@/lib/cop-types";
 
-const TacticalMap = dynamic(() => import("./TacticalMap"), { ssr: false });
+type PanelId =
+  | "overview"
+  | "messages"
+  | "terrain"
+  | "logistics"
+  | "aar"
+  | "reports"
+  | "threat-pred"
+  | "planning"
+  | "voice"
+  | "map-enhanced"
+  | "multi-monitor"
+  | "maven";
 
-type PanelId = "overview" | "messages" | "terrain" | "logistics" | "aar" | "reports" | "threat-pred" | "planning" | "voice" | "map-enhanced" | "multi-monitor" | "maven";
+type NavItem = {
+  id: PanelId;
+  label: string;
+  icon: typeof Map;
+  hint: string;
+};
 
-const panels: { id: PanelId; label: string; icon: typeof Map }[] = [
-  { id: "overview", label: "Vista General", icon: Map },
-  { id: "map-enhanced", label: "Mapa Avanzado", icon: Layers },
-  { id: "messages", label: "Mensajeria", icon: MessageSquare },
-  { id: "terrain", label: "Terreno", icon: Mountain },
-  { id: "logistics", label: "Logistica", icon: Package },
-  { id: "reports", label: "Reportes", icon: FileText },
-  { id: "threat-pred", label: "Amenazas", icon: Target },
-  { id: "planning", label: "Planificacion", icon: Target },
-  { id: "aar", label: "AAR", icon: Clock },
-  { id: "voice", label: "Voz", icon: Mic },
-  { id: "multi-monitor", label: "Multi-Monitor", icon: Layout },
-  { id: "maven", label: "Maven Fusion", icon: Satellite },
+const navSections: { title: string; items: NavItem[] }[] = [
+  {
+    title: "Operaciones",
+    items: [
+      { id: "overview", label: "Vista general", icon: Radar, hint: "KPIs y estado" },
+      { id: "map-enhanced", label: "Mapa avanzado", icon: Layers, hint: "Capas tácticas" },
+      { id: "messages", label: "Mensajería", icon: MessageSquare, hint: "Enlaces tácticos" },
+    ],
+  },
+  {
+    title: "Inteligencia",
+    items: [
+      { id: "threat-pred", label: "Amenazas", icon: Target, hint: "Predicción" },
+      { id: "terrain", label: "Terreno", icon: Mountain, hint: "Análisis GEOINT" },
+      { id: "planning", label: "Planificación", icon: Map, hint: "OPORD / COA" },
+    ],
+  },
+  {
+    title: "Soporte",
+    items: [
+      { id: "logistics", label: "Logística", icon: Package, hint: "Suministros" },
+      { id: "reports", label: "Reportes", icon: FileText, hint: "Productos" },
+      { id: "aar", label: "AAR", icon: Clock, hint: "Lecciones" },
+    ],
+  },
+  {
+    title: "Sistema",
+    items: [
+      { id: "voice", label: "Voz", icon: Mic, hint: "Comandos" },
+      { id: "multi-monitor", label: "Multi-monitor", icon: Layout, hint: "Mosaicos" },
+      { id: "maven", label: "Maven Fusion", icon: Satellite, hint: "Fusión multi-INT" },
+    ],
+  },
 ];
 
+const allPanels = navSections.flatMap((section) => section.items);
+
+const panelRenderers: Record<Exclude<PanelId, "overview">, () => ReactElement> = {
+  "map-enhanced": () => <TacticalMapEnhanced />,
+  messages: () => <MessagingPanel />,
+  terrain: () => <TerrainAnalysis />,
+  logistics: () => <LogisticsPanel />,
+  aar: () => <AARPanel />,
+  reports: () => <ReportsPanel />,
+  "threat-pred": () => <ThreatPrediction />,
+  planning: () => <PlanningPanel />,
+  voice: () => <VoiceCommand />,
+  "multi-monitor": () => <MultiMonitor />,
+  maven: () => <MavenPanel />,
+};
+
 export default function COPPage() {
-  const { state, setClassification, fetchAll, loading, error } = useCOPStore();
+  const { setClassification, fetchAll } = useCOPStore();
   const { clearance } = useAuthStore();
   const [activePanel, setActivePanel] = useState<PanelId>("overview");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     if (clearance) setClassification(clearance.replace("_", " "));
@@ -63,159 +129,203 @@ export default function COPPage() {
     return () => clearInterval(interval);
   }, [fetchAll]);
 
-  const renderPanel = () => {
-    switch (activePanel) {
-      case "overview": return null;
-      case "map-enhanced": return <TacticalMapEnhanced />;
-      case "messages": return <MessagingPanel />;
-      case "terrain": return <TerrainAnalysis />;
-      case "logistics": return <LogisticsPanel />;
-      case "aar": return <AARPanel />;
-      case "reports": return <ReportsPanel />;
-      case "threat-pred": return <ThreatPrediction />;
-      case "planning": return <PlanningPanel />;
-      case "voice": return <VoiceCommand />;
-      case "multi-monitor": return <MultiMonitor />;
-      case "maven": return <MavenPanel />;
-      default: return null;
-    }
-  };
+  const filteredSections = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return navSections;
+    return navSections
+      .map((section) => ({
+        ...section,
+        items: section.items.filter(
+          (item) =>
+            item.label.toLowerCase().includes(q) ||
+            item.hint.toLowerCase().includes(q) ||
+            section.title.toLowerCase().includes(q),
+        ),
+      }))
+      .filter((section) => section.items.length > 0);
+  }, [query]);
+
+  const activeMeta = allPanels.find((panel) => panel.id === activePanel);
+  const ActiveIcon = activeMeta?.icon ?? Radar;
 
   return (
-    <div className="min-h-screen bg-[#0a0e17] flex flex-col">
+    <div className="flex h-screen flex-col overflow-hidden bg-background text-ink">
       <ClassificationBanner />
-      <div className="flex justify-between items-center px-4 py-1 bg-gray-950 border-b border-gray-800">
-        <span className="text-green-400 font-bold text-sm tracking-wider">SESIS-FEDERATION COP</span>
-        <div className="flex items-center gap-3">
-          <span className="text-[10px] text-gray-500 font-mono">
-            PANEL: <span className="text-green-400">{panels.find(p => p.id === activePanel)?.label}</span>
-          </span>
-          <MissionClock />
-        </div>
-      </div>
-      <StatusBar />
 
-      <div className="flex-1 flex min-h-0">
-        <div className={`${sidebarCollapsed ? "w-10" : "w-32"} bg-gray-950 border-r border-gray-800 flex flex-col transition-all`}>
-          <button
-            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="p-2 text-gray-500 hover:text-gray-300 border-b border-gray-800 transition-colors"
-          >
-            {sidebarCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
-          </button>
-          <div className="flex-1 overflow-y-auto py-1">
-            {panels.map(p => {
-              const Icon = p.icon;
-              return (
-                <button
-                  key={p.id}
-                  onClick={() => setActivePanel(p.id)}
-                  className={`w-full flex items-center gap-2 px-2 py-1.5 text-left transition-colors ${
-                    activePanel === p.id
-                      ? "bg-green-900/20 text-green-400 border-l-2 border-green-400"
-                      : "text-gray-500 hover:text-gray-300 hover:bg-gray-900 border-l-2 border-transparent"
-                  }`}
-                >
-                  <Icon size={14} className="shrink-0" />
-                  {!sidebarCollapsed && <span className="text-[10px] font-mono truncate">{p.label}</span>}
-                </button>
-              );
-            })}
+      <header className="z-30 shrink-0 border-b border-stroke bg-surface/85 backdrop-blur-md">
+        <div className="flex items-center gap-3 px-3 py-2 sm:px-4">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-accent/30 bg-accent/10 text-accent">
+              <Shield size={16} />
+              <span className="absolute inset-0 rounded-lg ring-1 ring-inset ring-white/5" />
+            </span>
+            <div className="min-w-0 leading-tight">
+              <p className="truncate text-xs font-semibold tracking-[0.16em] text-ink">SESIS-FEDERATION</p>
+              <p className="hidden truncate text-3xs uppercase tracking-[0.2em] text-ink-faint sm:block">
+                Command Center · C4ISR
+              </p>
+            </div>
+          </div>
+
+          <nav aria-label="Ruta actual" className="hidden min-w-0 items-center gap-1.5 text-3xs text-ink-faint xl:flex">
+            <ChevronRight size={11} />
+            <span className="uppercase tracking-[0.16em]">Operaciones</span>
+            <ChevronRight size={11} />
+            <span className="flex min-w-0 items-center gap-1.5 text-ink-muted">
+              <ActiveIcon size={11} className="shrink-0" />
+              <span className="truncate">{activeMeta?.label}</span>
+            </span>
+          </nav>
+
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            <label className="relative hidden items-center lg:flex">
+              <Search size={13} className="pointer-events-none absolute left-2.5 text-ink-faint" />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Buscar módulo…"
+                aria-label="Buscar módulo"
+                className="input-field !w-44 !py-1.5 !pl-8 !text-2xs xl:!w-52"
+              />
+            </label>
+            <MissionClock />
           </div>
         </div>
+        <StatusBar />
+      </header>
 
-        <div className="flex-1 flex flex-col min-h-0">
-          {activePanel === "overview" ? (
-            <div className="flex-1 grid grid-cols-12 gap-2 p-2 overflow-auto">
-              <div className="col-span-3 flex flex-col gap-2">
-                <div className="bg-gray-900 rounded p-2 border border-gray-700" style={{ minHeight: "300px" }}>
-                  <div className="text-xs font-bold text-gray-400 mb-1">MAPA TACTICO</div>
-                  {error && (
-                    <div className="text-[10px] font-mono text-red-400 mb-1">{error}</div>
-                  )}
-                  <div className="rounded overflow-hidden" style={{ height: "260px" }}>
-                    <TacticalMap units={state.units as UnitPosition[]} />
-                  </div>
-                </div>
-                <AlertTicker />
-              </div>
-              <div className="col-span-6 flex flex-col gap-2">
-                <IntelFeed />
-                <ThreatPanel />
-                <div className="bg-gray-900 rounded p-2 border border-gray-700">
-                  <div className="text-xs font-bold text-gray-400 mb-1">LINEA TEMPORAL DE MISION</div>
-                  <div className="flex flex-wrap gap-1 text-xs font-mono text-gray-500">
-                    {state.timeline.length === 0 && (
-                      <span className="text-gray-600">Sin eventos de mision registrados</span>
-                    )}
-                    {state.timeline.map((ev, idx) => (
-                      <span key={ev.id} className="flex items-center gap-1">
-                        {idx > 0 && <span className="text-gray-600 mx-1">|</span>}
-                        <span className={
-                          ev.severity === "warning" ? "text-yellow-400" :
-                          ev.severity === "critical" ? "text-red-400" : "text-green-400"
-                        }>
-                          {new Date(ev.timestamp).toISOString().slice(11, 16)}Z
-                        </span>
-                        <span className="text-gray-300">{ev.description}</span>
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-              <div className="col-span-3 flex flex-col gap-2">
-                <div className="bg-gray-900 rounded p-2 border border-gray-700">
-                  <div className="text-xs font-bold text-gray-400 mb-1">ANALISIS DE ENLACES</div>
-                  <div className="bg-gray-800 rounded flex items-center justify-center text-gray-600 text-xs" style={{ height: "100px" }}>
-                    [Grafo Neo4j]
-                  </div>
-                </div>
-                <div className="bg-gray-900 rounded p-2 border border-gray-700">
-                  <div className="text-xs font-bold text-gray-400 mb-1">MALLA DE SENSORES</div>
-                  <div className="space-y-1">
-                    {loading && state.sensors.length === 0 && (
-                      <div className="text-xs font-mono text-gray-500 animate-pulse">Cargando sensores...</div>
-                    )}
-                    {error && (
-                      <div className="text-xs font-mono text-red-400">{error}</div>
-                    )}
-                    {!loading && !error && state.sensors.length === 0 && (
-                      <div className="text-xs font-mono text-gray-600">Sin sensores registrados</div>
-                    )}
-                    {state.sensors.map((s) => (
-                      <div key={s.id} className="flex items-center justify-between text-xs font-mono">
-                        <span className={
-                          s.status === "active" || s.status === "online" ? "text-green-400" :
-                          s.status === "low_battery" || s.status === "degraded" ? "text-yellow-400" : "text-red-400"
-                        }>
-                          {s.type}
-                        </span>
-                        <span className="text-gray-500">
-                          {s.battery !== undefined ? `${s.battery}%` : s.status.toUpperCase()}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div className="bg-gray-900 rounded p-2 border border-gray-700">
-                  <div className="text-xs font-bold text-gray-400 mb-1">WARGAMING</div>
-                  <div className="text-xs font-mono text-gray-500">Sin simulaciones activas</div>
+      <div className="flex min-h-0 flex-1">
+        {/* Rail de navegación (desktop) */}
+        <aside
+          className={`hidden h-full shrink-0 flex-col border-r border-stroke bg-surface-sunken/60 transition-[width] duration-200 lg:flex ${
+            sidebarCollapsed ? "w-[68px]" : "w-60"
+          }`}
+        >
+          <div className="flex items-center justify-between px-3 py-2.5">
+            {!sidebarCollapsed && (
+              <span className="text-3xs font-semibold uppercase tracking-[0.18em] text-ink-faint">
+                Módulos
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => setSidebarCollapsed((value) => !value)}
+              className="rounded-md border border-transparent p-1 text-ink-faint transition-colors hover:border-stroke hover:text-ink"
+              aria-label={sidebarCollapsed ? "Expandir navegación" : "Colapsar navegación"}
+            >
+              {sidebarCollapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}
+            </button>
+          </div>
+
+          <div className="flex-1 space-y-4 overflow-y-auto px-2 pb-3 scrollbar-military">
+            {filteredSections.map((section) => (
+              <div key={section.title}>
+                {!sidebarCollapsed && (
+                  <p className="mb-1 px-2 text-3xs font-semibold uppercase tracking-[0.18em] text-ink-faint">
+                    {section.title}
+                  </p>
+                )}
+                <div className="space-y-0.5">
+                  {section.items.map((item) => {
+                    const Icon = item.icon;
+                    const active = activePanel === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => setActivePanel(item.id)}
+                        aria-current={active ? "page" : undefined}
+                        title={sidebarCollapsed ? item.label : undefined}
+                        className={`rail-item ${active ? "rail-item-active" : ""} ${
+                          sidebarCollapsed ? "justify-center px-0" : ""
+                        }`}
+                      >
+                        <Icon size={15} className="shrink-0" />
+                        {!sidebarCollapsed && (
+                          <span className="min-w-0 flex-1 truncate">
+                            {item.label}
+                            <span className="mt-0.5 block truncate text-3xs font-normal text-ink-faint">
+                              {item.hint}
+                            </span>
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
-            </div>
-          ) : (
-            <div className="flex-1 p-2 min-h-0">
-              {renderPanel()}
+            ))}
+            {filteredSections.length === 0 && (
+              <p className="px-2 py-4 text-center text-3xs text-ink-faint">
+                Sin módulos que coincidan con “{query}”.
+              </p>
+            )}
+          </div>
+
+          {!sidebarCollapsed && (
+            <div className="border-t border-stroke px-3 py-2.5 text-3xs text-ink-faint">
+              <p className="flex items-center gap-1.5">
+                <span className="status-dot status-operational" aria-hidden="true" />
+                Núcleo C2 v3.0
+              </p>
+              <p className="mt-1 font-mono text-[10px] text-ink-faint">build 2026.11 · modular monolith</p>
             </div>
           )}
-        </div>
+        </aside>
+
+        {/* Contenido */}
+        <main className="min-h-0 min-w-0 flex-1 overflow-y-auto p-3 sm:p-4">
+          <div className="mx-auto w-full max-w-[1680px]">
+            {activePanel === "overview" ? (
+              <OverviewDashboard />
+            ) : (
+              <div className="animate-fade-in space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-lg border border-stroke bg-surface-raised text-accent">
+                      <ActiveIcon size={14} />
+                    </span>
+                    <div>
+                      <h1 className="text-sm font-semibold tracking-tight text-ink">{activeMeta?.label}</h1>
+                      <p className="text-3xs text-ink-faint">{activeMeta?.hint}</p>
+                    </div>
+                  </div>
+                  <span className="badge badge-neutral">
+                    <Activity size={10} />
+                    módulo operativo
+                  </span>
+                </div>
+                {panelRenderers[activePanel as Exclude<PanelId, "overview">]?.()}
+              </div>
+            )}
+          </div>
+        </main>
       </div>
 
-      <div className="border-t border-gray-800 p-2 bg-gray-950 flex gap-2 items-center">
-        <QuickActions />
-        <div className="flex-1" />
-        <CommandInput />
-      </div>
+      {/* Navegación inferior (móvil) */}
+      <nav
+        aria-label="Navegación de módulos"
+        className="flex shrink-0 gap-1 overflow-x-auto border-t border-stroke bg-surface/95 px-2 py-1.5 backdrop-blur lg:hidden"
+      >
+        {allPanels.map((item) => {
+          const Icon = item.icon;
+          const active = activePanel === item.id;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => setActivePanel(item.id)}
+              aria-current={active ? "page" : undefined}
+              className={`flex min-w-[64px] flex-col items-center gap-1 rounded-lg px-2 py-1.5 text-[10px] font-medium transition-colors ${
+                active ? "bg-accent/10 text-accent" : "text-ink-faint hover:text-ink"
+              }`}
+            >
+              <Icon size={16} />
+              <span className="truncate">{item.label.split(" ")[0]}</span>
+            </button>
+          );
+        })}
+      </nav>
     </div>
   );
 }

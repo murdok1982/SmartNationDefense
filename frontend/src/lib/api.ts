@@ -63,8 +63,8 @@ export async function login(
     body: JSON.stringify({ username, password }),
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: "Login failed" }));
-    throw new Error(err.detail || "Authentication error");
+    const err = await res.json().catch(() => ({ detail: "No se pudo iniciar sesión" }));
+    throw new Error(err.detail || "Error de autenticación");
   }
   const data = await res.json();
   setTokens(data.access_token, data.refresh_token);
@@ -95,17 +95,20 @@ export async function refreshAccessToken(): Promise<string | null> {
 
 export interface ApiFetchOptions extends RequestInit {
   body?: any;
+  /** Si es `false`, no adjunta el token de acceso (endpoints públicos). */
+  auth?: boolean;
 }
 
 export async function apiFetch<T = any>(
   endpoint: string,
   options: ApiFetchOptions = {}
 ): Promise<T> {
+  const { auth = true, ...requestOptions } = options;
   const url = endpoint.startsWith("http") ? endpoint : `${API_BASE}${endpoint}`;
-  let token = getAccessToken();
+  let token = auth ? getAccessToken() : null;
 
-  const headers = new Headers(options.headers || {});
-  if (!headers.has("Content-Type") && !(options.body instanceof FormData)) {
+  const headers = new Headers(requestOptions.headers || {});
+  if (!headers.has("Content-Type") && !(requestOptions.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
   if (token && !headers.has("Authorization")) {
@@ -113,12 +116,14 @@ export async function apiFetch<T = any>(
   }
 
   const fetchOptions: RequestInit = {
-    ...options,
+    ...requestOptions,
     headers,
     body:
-      options.body && !(options.body instanceof FormData) && typeof options.body !== "string"
-        ? JSON.stringify(options.body)
-        : options.body,
+      requestOptions.body &&
+      !(requestOptions.body instanceof FormData) &&
+      typeof requestOptions.body !== "string"
+        ? JSON.stringify(requestOptions.body)
+        : requestOptions.body,
   };
 
   let res = await fetch(url, fetchOptions);
@@ -147,7 +152,13 @@ export async function apiFetch<T = any>(
 export const apiRequest = apiFetch;
 
 export function apiErrorMessage(err: unknown): string {
-  if (err instanceof Error) return err.message;
+  if (err instanceof Error) {
+    // Los mensajes nativos del navegador llegan en inglés; se traducen los frecuentes.
+    if (err.message === "Failed to fetch" || err.message === "Load failed") {
+      return "No se pudo contactar con el núcleo C2. Revisa la conexión y reintenta.";
+    }
+    return err.message;
+  }
   if (typeof err === "string") return err;
-  return "An unexpected network error occurred";
+  return "Error de red inesperado. Verifica la conexión con el núcleo C2.";
 }

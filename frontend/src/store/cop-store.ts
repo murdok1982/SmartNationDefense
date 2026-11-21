@@ -6,7 +6,7 @@ import {
   ThreatPredictionData, OPORD, COA, VoiceCommandEntry,
   WidgetConfig, DashboardLayout, UnitPosition, SensorNode, PlanningEntry, LogisticsEntry,
 } from "@/lib/cop-types";
-import { apiFetch, apiRequest } from "@/lib/api";
+import { apiFetch, apiRequest, apiErrorMessage } from "@/lib/api";
 import {
   mapAlert, mapIntelProduct, mapEarlyWarning, mapMessage,
   mapSupply, mapPersonnel, mapMedevac, mapMaintenance,
@@ -217,19 +217,21 @@ export const useCOPStore = create<COPStore>((set, get) => ({
   fetchAll: async () => {
     set({ loading: true, error: null });
     try {
+      // `fetchThreats` correlaciona contra las posiciones ya cargadas, por eso
+      // se espera a `fetchUnits` antes de calcular la predicción.
       await Promise.all([
+        get().fetchUnits(),
         get().fetchAlerts(),
         get().fetchIntel(),
-        get().fetchThreats(),
         get().fetchMessages(),
-        get().fetchUnits(),
         get().fetchSensors(),
         get().fetchReports(),
         get().fetchLogistics(),
       ]);
+      await get().fetchThreats();
       set({ loading: false, lastFetch: Date.now() });
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Error en fetchAll";
+      const msg = e instanceof Error ? e.message : "Error al sincronizar la telemetría";
       set({ loading: false, error: msg });
     }
   },
@@ -239,7 +241,10 @@ export const useCOPStore = create<COPStore>((set, get) => ({
       const data = await apiRequest<BackendAlert[]>("/api/v1/c2/?limit=50");
       const alerts = data.map(mapAlert);
       set(s => ({ state: { ...s.state, alerts } }));
-    } catch { /* individual errors handled by components */ }
+    } catch (e) {
+      // Se publica en el store para que la vista pueda ofrecer reintento.
+      set((s) => ({ error: s.error ?? apiErrorMessage(e) }));
+    }
   },
 
   fetchIntel: async () => {
@@ -247,7 +252,10 @@ export const useCOPStore = create<COPStore>((set, get) => ({
       const data = await apiRequest<BackendIntelProduct[]>("/api/v1/c2/products?limit=20");
       const intelFeed = data.map(mapIntelProduct);
       set(s => ({ state: { ...s.state, intelFeed }, intelItems: intelFeed }));
-    } catch { /* handled by components */ }
+    } catch (e) {
+      // Se publica en el store para que la vista pueda ofrecer reintento.
+      set((s) => ({ error: s.error ?? apiErrorMessage(e) }));
+    }
   },
 
   fetchThreats: async () => {
@@ -260,7 +268,10 @@ export const useCOPStore = create<COPStore>((set, get) => ({
       });
       const threats = data.map(mapEarlyWarning);
       set(s => ({ state: { ...s.state, threats } }));
-    } catch { /* handled by components */ }
+    } catch (e) {
+      // Se publica en el store para que la vista pueda ofrecer reintento.
+      set((s) => ({ error: s.error ?? apiErrorMessage(e) }));
+    }
   },
 
   fetchMessages: async () => {
@@ -268,7 +279,10 @@ export const useCOPStore = create<COPStore>((set, get) => ({
       const data = await apiRequest<BackendMessage[]>(`/api/v1/messaging/history?user_id=OPERATOR&limit=100`);
       const messages = data.map(mapMessage);
       set(() => ({ messages }));
-    } catch { /* handled by components */ }
+    } catch (e) {
+      // Se publica en el store para que la vista pueda ofrecer reintento.
+      set((s) => ({ error: s.error ?? apiErrorMessage(e) }));
+    }
   },
 
   fetchUnits: async () => {
@@ -279,7 +293,10 @@ export const useCOPStore = create<COPStore>((set, get) => ({
       ]);
       const units = mergeUnits(orbat, blueForce);
       set(s => ({ state: { ...s.state, units } }));
-    } catch { /* handled by components */ }
+    } catch (e) {
+      // Se publica en el store para que la vista pueda ofrecer reintento.
+      set((s) => ({ error: s.error ?? apiErrorMessage(e) }));
+    }
   },
 
   fetchSensors: async () => {
@@ -287,7 +304,10 @@ export const useCOPStore = create<COPStore>((set, get) => ({
       const data = await apiRequest<BackendSensorSource[]>("/api/v1/c2/status");
       const sensors = data.map(mapSensor);
       set(s => ({ state: { ...s.state, sensors } }));
-    } catch { /* handled by components */ }
+    } catch (e) {
+      // Se publica en el store para que la vista pueda ofrecer reintento.
+      set((s) => ({ error: s.error ?? apiErrorMessage(e) }));
+    }
   },
 
   fetchReports: async () => {
@@ -295,7 +315,10 @@ export const useCOPStore = create<COPStore>((set, get) => ({
       const data = await apiRequest<BackendReport[]>("/api/v1/reports?limit=50");
       const reports = data.map(mapReport);
       set(() => ({ reports }));
-    } catch { /* handled by components */ }
+    } catch (e) {
+      // Se publica en el store para que la vista pueda ofrecer reintento.
+      set((s) => ({ error: s.error ?? apiErrorMessage(e) }));
+    }
   },
 
   fetchPlanning: async () => {
@@ -310,7 +333,10 @@ export const useCOPStore = create<COPStore>((set, get) => ({
           timestamp: o.createdAt,
         })),
       }));
-    } catch { /* handled */ }
+    } catch (e) {
+      // Se publica en el store para que la vista pueda ofrecer reintento.
+      set((s) => ({ error: s.error ?? apiErrorMessage(e) }));
+    }
   },
 
   fetchAAR: async (aarId?: string) => {
@@ -321,7 +347,10 @@ export const useCOPStore = create<COPStore>((set, get) => ({
       }
       const data = await apiRequest<BackendAAR>(`/api/v1/aar/${encodeURIComponent(aarId)}`);
       set(() => ({ aar: mapAAR(data) }));
-    } catch { /* handled */ }
+    } catch (e) {
+      // Se publica en el store para que la vista pueda ofrecer reintento.
+      set((s) => ({ error: s.error ?? apiErrorMessage(e) }));
+    }
   },
 
   fetchLogistics: async () => {
@@ -335,6 +364,9 @@ export const useCOPStore = create<COPStore>((set, get) => ({
         ...personnel.map(p => ({ id: p.id, type: "PERSONNEL" as const, description: `${p.rank} ${p.name}`, status: p.status })),
       ];
       set(() => ({ supplies, personnel, logistics }));
-    } catch { /* handled */ }
+    } catch (e) {
+      // Se publica en el store para que la vista pueda ofrecer reintento.
+      set((s) => ({ error: s.error ?? apiErrorMessage(e) }));
+    }
   },
 }));

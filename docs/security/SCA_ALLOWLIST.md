@@ -18,10 +18,13 @@ rompe el pipeline.
 
 ## Frontend (`npm audit --omit=dev`)
 
+`npm audit --omit=dev --audit-level=high` → **0 vulnerabilidades** tras el
+upgrade a Next 16.4.6 / React 19.3.1 / react-leaflet 5 / lucide-react 1.77.
+
 | Paquete | Motivo | Estado |
 |---|---|---|
-| `brace-expansion` (vía `eslint`/`minimatch`) | Dependencia **solo de desarrollo**; `--omit=dev` la excluye del gate de producción. | Aceptado en dev |
-| `postcss` / `next` | Se actualiza a la rama Next con parche (15.5+/16.x). Advisory de `source-map-js` solo afecta al procesado de source maps en build, no a runtime. | Verificar con `npm audit --omit=dev` |
+| `brace-expansion` (vía `eslint@9` → `minimatch`) | Dependencia **solo de desarrollo** (lint), no se incluye en el bundle de producción. `--omit=dev` la excluye del gate. Advisory de DoS local al procesar patrones glob del linter. | Aceptado en dev |
+| `postcss` / `next` / `source-map-js` | Resueltos al subir de Next 14 (EOL) a Next 16.4.6; el audit de producción queda en 0. | Resuelto |
 
 ## Reglas
 

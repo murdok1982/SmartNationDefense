@@ -20,8 +20,18 @@ export default function Home() {
 
   if (!hydrated || !isAuthenticated) {
     return (
-      <div className="min-h-screen bg-[#0a0e17] flex items-center justify-center">
-        <span className="text-green-400 font-mono text-xs animate-pulse">VERIFICANDO SESION...</span>
+      <div
+        role="status"
+        aria-live="polite"
+        className="flex min-h-screen flex-col items-center justify-center gap-3 bg-background px-6 text-center"
+      >
+        <span className="relative flex h-9 w-9 items-center justify-center rounded-lg border border-accent/30 bg-accent/10">
+          <span className="status-dot status-operational animate-pulse" aria-hidden="true" />
+        </span>
+        <p className="text-2xs font-semibold uppercase tracking-[0.18em] text-ink-muted">
+          Verificando sesión
+        </p>
+        <p className="text-3xs text-ink-faint">Restaurando credenciales del núcleo C2…</p>
       </div>
     );
   }

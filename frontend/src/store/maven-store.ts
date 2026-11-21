@@ -3,11 +3,15 @@ import { apiFetch, apiErrorMessage } from "@/lib/api";
 import type {
   SatelliteImage,
   Detection,
+  DetectionRaw,
   Track,
+  TrackRaw,
   ScoredCOA,
+  ScoredCOARaw,
   MissionParams,
   COPSnapshot,
 } from "@/lib/maven-types";
+import { normalizeCOA, normalizeDetection, normalizeTrack } from "@/lib/maven-types";
 
 interface MavenStore {
   satelliteImages: SatelliteImage[]
@@ -45,8 +49,8 @@ export const useMavenStore = create<MavenStore>((set, get) => ({
   fetchDetections: async () => {
     set({ loading: true, error: null });
     try {
-      const data = await apiFetch<Detection[]>("/api/v3/vision/detections?limit=200");
-      set({ detections: data, loading: false });
+      const data = await apiFetch<DetectionRaw[]>("/api/v3/vision/detections?limit=200");
+      set({ detections: data.map((d) => normalizeDetection(d)), loading: false });
     } catch (e) {
       set({ loading: false, error: apiErrorMessage(e) });
     }
@@ -55,8 +59,8 @@ export const useMavenStore = create<MavenStore>((set, get) => ({
   fetchTracks: async () => {
     set({ loading: true, error: null });
     try {
-      const data = await apiFetch<Track[]>("/api/v3/fusion/tracks?limit=500");
-      set({ tracks: data, loading: false });
+      const data = await apiFetch<TrackRaw[]>("/api/v3/fusion/tracks?limit=500");
+      set({ tracks: data.map(normalizeTrack), loading: false });
     } catch (e) {
       set({ loading: false, error: apiErrorMessage(e) });
     }
@@ -72,8 +76,8 @@ export const useMavenStore = create<MavenStore>((set, get) => ({
             )
           ).toString()}`
         : "";
-      const data = await apiFetch<ScoredCOA[]>(`/api/v3/coa/list${qs}`);
-      set({ coas: data, loading: false });
+      const data = await apiFetch<ScoredCOARaw[]>(`/api/v3/coa/list${qs}`);
+      set({ coas: data.map(normalizeCOA), loading: false });
     } catch (e) {
       set({ loading: false, error: apiErrorMessage(e) });
     }
@@ -82,11 +86,11 @@ export const useMavenStore = create<MavenStore>((set, get) => ({
   generateCOA: async (params) => {
     set({ loading: true, error: null });
     try {
-      const data = await apiFetch<ScoredCOA[]>("/api/v3/coa/generate", {
+      const data = await apiFetch<ScoredCOARaw[]>("/api/v3/coa/generate", {
         method: "POST",
         body: params,
       });
-      set({ coas: data, loading: false });
+      set({ coas: data.map(normalizeCOA), loading: false });
     } catch (e) {
       set({ loading: false, error: apiErrorMessage(e) });
     }
@@ -95,12 +99,12 @@ export const useMavenStore = create<MavenStore>((set, get) => ({
   compareCOAs: async (coas, criteria) => {
     set({ loading: true, error: null });
     try {
-      const data = await apiFetch<ScoredCOA[]>("/api/v3/coa/compare", {
+      const data = await apiFetch<ScoredCOARaw[]>("/api/v3/coa/compare", {
         method: "POST",
         body: { coa_ids: coas.map(c => c.id), criteria },
       });
       set({ loading: false });
-      return data;
+      return data.map(normalizeCOA);
     } catch (e) {
       set({ loading: false, error: apiErrorMessage(e) });
       return coas;
@@ -143,25 +147,27 @@ export const useMavenStore = create<MavenStore>((set, get) => ({
   requestAnalysis: async (imageUrl) => {
     set({ loading: true, error: null });
     try {
-      const data = await apiFetch<{ detections: Detection[] }>("/api/v3/vision/analyze-satellite", {
+      const data = await apiFetch<{ detections: DetectionRaw[] }>("/api/v3/vision/analyze-satellite", {
         method: "POST",
         body: { image_url: imageUrl },
       });
+      const receivedAt = new Date().toISOString();
+      const detections = data.detections.map((d) => normalizeDetection(d, receivedAt));
       set(s => ({
         satelliteImages: [
           {
             id: `img-${Date.now()}`,
             url: imageUrl,
-            timestamp: new Date().toISOString(),
+            timestamp: receivedAt,
             source: "satellite",
-            detections: data.detections,
+            detections,
           },
           ...s.satelliteImages,
         ],
-        detections: [...data.detections, ...s.detections],
+        detections: [...detections, ...s.detections],
         loading: false,
       }));
-      return data.detections;
+      return detections;
     } catch (e) {
       set({ loading: false, error: apiErrorMessage(e) });
       return [];

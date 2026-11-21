@@ -4,64 +4,201 @@
 
 @layer base {
   :root {
-    --color-bg-primary: #0a0e17;
-    --color-bg-secondary: #111827;
-    --color-bg-tertiary: #1f2937;
-    --color-border: #374151;
-    --color-text-primary: #f3f4f6;
-    --color-text-secondary: #9ca3af;
-    --color-green: #22c55e;
-    --color-yellow: #eab308;
-    --color-red: #ef4444;
-    --color-blue: #3b82f6;
-    --color-magenta: #a855f7;
-    --color-cyan: #06b6d4;
+    --color-bg-primary: #060a12;
+    --color-bg-secondary: #0b1220;
+    --color-bg-tertiary: #152136;
+    --color-border: #1c2942;
+    --color-border-strong: #263854;
+    --color-text-primary: #e8eefc;
+    --color-text-secondary: #93a4c2;
+    --color-text-faint: #778bab;
+    --color-accent: #22d3ee;
+    --color-success: #34d399;
+    --color-warning: #fbbf24;
+    --color-danger: #f87171;
+    --color-info: #60a5fa;
+    color-scheme: dark;
   }
 
   * {
-    @apply border-military-border;
+    border-color: var(--color-border);
+  }
+
+  html,
+  body {
+    min-height: 100%;
   }
 
   body {
-    @apply bg-military-bg-primary text-military-text-primary font-sans m-0 p-0 antialiased;
-    font-feature-settings: "rlig" 1, "calt" 1;
+    @apply bg-background text-ink font-sans antialiased;
+    background-image: theme("backgroundImage.app-radial");
+    background-attachment: fixed;
+  }
+
+  ::selection {
+    background: rgba(34, 211, 238, 0.28);
+    color: #f4f7fd;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply text-ink font-semibold tracking-tight;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+    }
   }
 }
 
 @layer components {
+  /* Superficies */
   .panel {
-    @apply bg-military-bg-secondary rounded border border-military-border p-2;
+    @apply relative rounded-xl border border-stroke bg-surface/85 shadow-panel backdrop-blur-sm;
   }
 
   .panel-header {
-    @apply text-2xs font-bold text-military-text-secondary uppercase tracking-wider mb-1;
+    @apply flex items-center justify-between gap-2 border-b border-stroke/70 px-3.5 py-2.5;
   }
 
+  .panel-title {
+    @apply flex items-center gap-2 text-2xs font-semibold uppercase tracking-[0.14em] text-ink-muted;
+  }
+
+  .panel-body {
+    @apply p-3.5;
+  }
+
+  .surface-raised {
+    @apply rounded-lg border border-stroke bg-surface-raised;
+  }
+
+  .hairline {
+    @apply border-t border-stroke/70;
+  }
+
+  /* Datos */
   .data-text {
-    @apply font-mono text-xs;
+    @apply font-mono text-xs tabular-nums;
   }
 
+  .kpi-value {
+    @apply font-mono text-[1.65rem] font-semibold leading-none tracking-tight text-ink;
+  }
+
+  .kpi-label {
+    @apply text-2xs font-medium uppercase tracking-[0.16em] text-ink-faint;
+  }
+
+  .metric-bar {
+    @apply h-1.5 w-full overflow-hidden rounded-full bg-surface-overlay;
+  }
+
+  /* Estados */
   .status-dot {
-    @apply w-2 h-2 rounded-full;
+    @apply inline-block h-1.5 w-1.5 shrink-0 rounded-full;
   }
 
   .status-operational {
-    @apply bg-military-green;
+    @apply bg-signal-success shadow-[0_0_8px_rgba(52,211,153,0.55)];
   }
 
   .status-degraded {
-    @apply bg-military-yellow;
+    @apply bg-signal-warning shadow-[0_0_8px_rgba(251,191,36,0.55)];
   }
 
   .status-critical {
-    @apply bg-military-red;
+    @apply bg-signal-danger shadow-[0_0_8px_rgba(248,113,113,0.6)];
+  }
+
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-3xs font-semibold uppercase tracking-[0.12em];
+  }
+
+  .badge-neutral {
+    @apply border-stroke bg-surface-overlay text-ink-muted;
+  }
+
+  .badge-success {
+    @apply border-signal-success/30 bg-signal-success/10 text-signal-success;
+  }
+
+  .badge-warning {
+    @apply border-signal-warning/30 bg-signal-warning/10 text-signal-warning;
+  }
+
+  .badge-danger {
+    @apply border-signal-danger/30 bg-signal-danger/10 text-signal-danger;
+  }
+
+  .badge-info {
+    @apply border-accent/30 bg-accent/10 text-accent;
+  }
+
+  /* Controles */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-primary {
+    @apply btn border-accent/40 bg-accent/15 text-accent hover:bg-accent/25;
+  }
+
+  .btn-ghost {
+    @apply btn border-stroke bg-transparent text-ink-muted hover:border-stroke-strong hover:text-ink;
+  }
+
+  .input-field {
+    @apply w-full rounded-lg border border-stroke bg-surface-sunken px-3 py-2 text-sm text-ink placeholder:text-ink-faint transition-colors focus:border-accent/60 focus:outline-none;
+  }
+
+  .rail-item {
+    @apply relative flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-ink-muted transition-colors hover:bg-surface-raised hover:text-ink;
+  }
+
+  .rail-item-active {
+    @apply bg-accent/10 text-accent hover:bg-accent/15 hover:text-accent;
+  }
+
+  .rail-item-active::before {
+    content: "";
+    @apply absolute left-0 top-1/2 h-5 w-[2px] -translate-y-1/2 rounded-full bg-accent;
+  }
+
+  .skeleton {
+    @apply rounded-md;
+    background-image: linear-gradient(
+      90deg,
+      rgba(22, 34, 58, 0.55) 0%,
+      rgba(38, 56, 84, 0.85) 50%,
+      rgba(22, 34, 58, 0.55) 100%
+    );
+    background-size: 800px 100%;
+    @apply animate-shimmer;
+  }
+
+  .scan-line {
+    @apply pointer-events-none absolute inset-x-0 top-0 h-px bg-accent-line animate-sweep;
   }
 }
 
 @layer utilities {
   .scrollbar-military {
     scrollbar-width: thin;
-    scrollbar-color: #374151 #0a0e17;
+    scrollbar-color: #263854 transparent;
   }
 
   .scrollbar-military::-webkit-scrollbar {
@@ -70,15 +207,28 @@
   }
 
   .scrollbar-military::-webkit-scrollbar-track {
-    background: #0a0e17;
+    background: transparent;
   }
 
   .scrollbar-military::-webkit-scrollbar-thumb {
-    background: #1f2937;
-    border-radius: 3px;
+    background: #263854;
+    border-radius: 999px;
   }
 
   .scrollbar-military::-webkit-scrollbar-thumb:hover {
-    background: #374151;
+    background: #34507a;
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .bg-app-grid {
+    background-image: theme("backgroundImage.app-grid");
+    background-size: 44px 44px;
+  }
+
+  .mask-fade-b {
+    mask-image: linear-gradient(to bottom, black 70%, transparent 100%);
   }
 }

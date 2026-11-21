@@ -1,29 +1,36 @@
 "use client";
-import { useState, useEffect } from "react";
 
+import { useEffect, useState } from "react";
+
+/** Reloj de misión en UTC, con segundos y sin dependencias externas. */
 export default function MissionClock() {
-  const [time, setTime] = useState("");
+  const [now, setNow] = useState<Date | null>(null);
 
   useEffect(() => {
-    const tick = () => {
-      const now = new Date();
-      const y = now.getUTCFullYear();
-      const mo = String(now.getUTCMonth() + 1).padStart(2, "0");
-      const d = String(now.getUTCDate()).padStart(2, "0");
-      const h = String(now.getUTCHours()).padStart(2, "0");
-      const mi = String(now.getUTCMinutes()).padStart(2, "0");
-      const s = String(now.getUTCSeconds()).padStart(2, "0");
-      setTime(`${y}-${mo}-${d} ${h}:${mi}:${s} Z`);
-    };
+    const tick = () => setNow(new Date());
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, []);
 
+  const pad = (value: number) => String(value).padStart(2, "0");
+  const display = now
+    ? `${now.getUTCFullYear()}-${pad(now.getUTCMonth() + 1)}-${pad(now.getUTCDate())} ${pad(
+        now.getUTCHours(),
+      )}:${pad(now.getUTCMinutes())}:${pad(now.getUTCSeconds())}Z`
+    : null;
+  // `dateTime` exige un valor ISO 8601 válido (con `T`), no el formato de pantalla.
+  const isoTime = now ? now.toISOString().replace(/\.\d{3}Z$/, "Z") : undefined;
+
   return (
-    <div className="flex items-center gap-2">
-      <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse-glow" />
-      <span className="text-green-400 font-mono text-sm tracking-wider">{time}</span>
+    <div className="flex items-center gap-1.5 rounded-lg border border-stroke bg-surface-sunken/70 px-2.5 py-1">
+      <span className="status-dot status-operational animate-pulse" aria-hidden="true" />
+      <time
+        dateTime={isoTime}
+        className="font-mono text-3xs tabular-nums tracking-[0.08em] text-ink-muted"
+      >
+        {display ?? "——:——:——Z"}
+      </time>
     </div>
   );
 }

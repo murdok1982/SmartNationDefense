@@ -13,6 +13,7 @@ import type {
   ThreatPredictionData,
   UnitPosition,
   SensorNode,
+  AARLesson,
 } from "@/lib/cop-types";
 
 export interface BackendAlert {
@@ -74,7 +75,7 @@ export interface BackendSupply {
   minThreshold?: number;
 }
 
-export interface BackendPersonnelResponse {
+export interface BackendPersonnel {
   id: string | number;
   name?: string;
   full_name?: string;
@@ -85,6 +86,14 @@ export interface BackendPersonnelResponse {
   lastCheckin?: string;
   medical_status?: string;
   role?: string;
+}
+
+/** Envelope real de `/api/v1/logistics/personnel`. */
+export interface BackendPersonnelResponse {
+  personnel: BackendPersonnel[];
+  active_count: number;
+  casualties: number;
+  total: number;
 }
 
 export interface BackendMedevac {
@@ -147,11 +156,16 @@ export interface BackendOPORD {
 export interface BackendPrediction {
   unit_id?: string;
   unitId?: string;
+  unit_name?: string;
   predicted_action?: string;
+  recommended_action?: string;
   probability?: number;
   confidence?: number;
+  threat_level?: number;
   timeframe_min?: number;
-  target_location?: { lat: number; lon: number };
+  current_location?: { lat: number; lon: number } | [number, number];
+  predicted_location?: { lat: number; lon: number } | [number, number];
+  target_location?: { lat: number; lon: number } | [number, number];
 }
 
 export interface BackendOrbatUnit {
@@ -258,10 +272,10 @@ export function mapSupply(b: BackendSupply): Supply {
   };
 }
 
-export function mapPersonnel(b: BackendPersonnelResponse): Personnel {
+export function mapPersonnel(b: BackendPersonnel): Personnel {
   return {
     id: String(b.id),
-    name: b.name || b.full_name || "Unknown Operator",
+    name: b.name || b.full_name || "Operador sin identificar",
     rank: b.rank || "PVT",
     unit: b.unit || "Base Unit",
     status: b.status || "ACTIVE",
@@ -272,78 +286,121 @@ export function mapPersonnel(b: BackendPersonnelResponse): Personnel {
 }
 
 export function mapMedevac(b: BackendMedevac): MEDEVACRequest {
+  const urgency = (b.urgency || "").toUpperCase();
   return {
     id: String(b.id),
-    location: b.location || "Coordinates Pending",
-    urgency: (b.urgency as any) || "URGENT",
-    casualties: b.casualties || 1,
-    status: (b.status as any) || "REQUESTED",
-    requestedAt: b.requested_at || new Date().toISOString(),
-    etaMin: b.eta_min,
+    location: b.location || "Coordenadas pendientes",
+    woundedCount: b.casualties ?? 1,
+    classification:
+      urgency === "PRIORITY" || urgency === "ROUTINE" ? urgency : "URGENT",
+    equipment: b.eta_min ? `ETA ${b.eta_min} min` : "Sin asignar",
+    personnel: "Equipo médico",
+    status:
+      b.status === "APPROVED" ||
+      b.status === "IN_TRANSIT" ||
+      b.status === "COMPLETED"
+        ? b.status
+        : "PENDING",
+    timestamp: b.requested_at || new Date().toISOString(),
   };
 }
 
 export function mapMaintenance(b: BackendMaintenance): MaintenanceRequest {
   return {
     id: String(b.id),
-    assetId: b.asset_id || "ASSET-UNKNOWN",
-    assetType: b.asset_type || "Vehicle",
-    issue: b.issue || "General maintenance required",
-    priority: (b.priority as any) || "MEDIUM",
-    status: (b.status as any) || "OPEN",
-    reportedAt: b.reported_at || new Date().toISOString(),
-    estimatedHours: b.estimated_hours,
+    equipment: b.asset_type || b.asset_id || "Activo sin identificar",
+    description: b.issue || "Mantenimiento general requerido",
+    priority: (b.priority || "MEDIUM").toUpperCase(),
+    status: (b.status || "OPEN").toUpperCase(),
+    timestamp: b.reported_at || new Date().toISOString(),
   };
 }
 
 export function mapReport(b: BackendReport): GeneratedReport {
   return {
     id: String(b.id),
-    title: b.title || "Intelligence Summary",
-    type: (b.type as any) || "SITREP",
+    template: b.type || "SITREP",
+    title: b.title || "Resumen de inteligencia",
     classification: b.classification || "SECRET",
-    generatedAt: b.generated_at || new Date().toISOString(),
-    summary: b.summary || "Summary report",
-    url: b.url,
+    content: { summary: b.summary || "Sin resumen disponible", url: b.url },
+    timestamp: b.generated_at || new Date().toISOString(),
+    author: "Sistema",
+    status: "FINAL",
   };
 }
 
 export function mapAAR(b: BackendAAR): AfterActionReview {
+  const lessons: AARLesson[] = (b.lessons_learned || []).map((text, index) => ({
+    id: `lesson-${index + 1}`,
+    category: "Operaciones",
+    description: text,
+    impact: b.success_rating && b.success_rating >= 70 ? "Positivo" : "A mejorar",
+  }));
+
   return {
     id: String(b.id),
-    missionId: b.mission_id || "MISSION-001",
-    title: b.title || "After Action Review",
-    objectivesMet: b.objectives_met ?? true,
-    successRating: b.success_rating || 85,
-    lessonsLearned: b.lessons_learned || [],
-    timeline: b.timeline || [],
-    strengths: b.strengths || [],
-    weaknesses: b.weaknesses || [],
+    operationName: b.title || "Revisión posterior a la acción",
+    startTime: b.timeline?.[0]?.timestamp || new Date().toISOString(),
+    endTime: b.timeline?.length ? b.timeline[b.timeline.length - 1]?.timestamp ?? null : null,
+    timeline: (b.timeline || []).map((event, index) => ({
+      id: event?.id || `event-${index + 1}`,
+      timestamp: event?.timestamp || new Date().toISOString(),
+      description: event?.description || String(event?.event || "Evento sin descripción"),
+      type: event?.type || "MISSION",
+      actor: event?.actor || "Sistema",
+    })),
+    objectives: (b.strengths || []).map((text, index) => ({
+      id: `obj-${index + 1}`,
+      description: text,
+      status: "MET",
+    })),
+    lessonsLearned: lessons,
+    recommendations: b.weaknesses || [],
+    status: b.objectives_met === false ? "REVIEWED" : "COMPLETED",
   };
 }
 
 export function mapOPORD(b: BackendOPORD): OPORD {
   return {
     id: String(b.id),
-    name: b.name || b.operation_name || "OPERATION DEFAULT",
+    operationName: b.name || b.operation_name || "OPERACIÓN SIN NOMBRE",
     classification: b.classification || "SECRET",
-    situation: b.situation || "Situation baseline",
-    mission: b.mission || "Mission objectives defined",
-    execution: b.execution || "Execution steps assigned",
-    adminLogistics: b.admin_logistics || "Logistics support active",
-    commandSignal: b.command_signal || "Command channels secured",
-    status: (b.status as any) || "DRAFT",
+    status: (b.status || "DRAFT").toUpperCase(),
     createdAt: b.created_at || new Date().toISOString(),
+    paragraphs: {
+      situation: { text: b.situation || "Situación no especificada" },
+      mission: { text: b.mission || "Misión no especificada" },
+      execution: { text: b.execution || "Ejecución no especificada" },
+      admin_logistics: { text: b.admin_logistics || "Logística no especificada" },
+      command_signal: { text: b.command_signal || "Comunicaciones no especificadas" },
+    },
   };
 }
 
 export function mapPrediction(b: BackendPrediction): ThreatPredictionData {
+  const toTuple = (
+    value: { lat: number; lon: number } | [number, number] | undefined,
+    fallback: [number, number],
+  ): [number, number] => {
+    if (!value) return fallback;
+    if (Array.isArray(value)) return [value[0] ?? 0, value[1] ?? 0];
+    return [value.lat ?? 0, value.lon ?? 0];
+  };
+
+  const unitId = b.unitId || b.unit_id || "UNIT-UNKNOWN";
+  const current = toTuple(b.current_location, [0, 0]);
+  const predicted = toTuple(b.predicted_location ?? b.target_location, current);
+
   return {
-    unitId: b.unitId || b.unit_id || "UNIT-UNKNOWN",
-    predictedAction: b.predicted_action || "TRANSIT",
-    probability: b.probability || b.confidence || 0.5,
-    timeframeMin: b.timeframe_min || 30,
-    targetLocation: b.target_location,
+    unitId,
+    unitName: b.unit_name || unitId,
+    currentLocation: current,
+    predictedLocation: predicted,
+    confidence: b.probability || b.confidence || 0.5,
+    timeHorizon: b.timeframe_min || 30,
+    threatLevel: b.threat_level ?? 3,
+    movementPattern: b.predicted_action || "TRANSIT",
+    recommendedAction: b.recommended_action || "Mantener observación",
   };
 }
 

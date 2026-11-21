@@ -1,7 +1,7 @@
 # AUTONOMOUS EXECUTION BACKLOG
 
 - **Project Name:** SmartNationDefense / SESIS-FEDERATION
-- **Current Phase:** `PHASE_3` — **SECURITY GATE BLOCKED** (4 HIGH abiertos: VULN-006/007/008/009). Auditoría TASK-029 entregada; TASK-030 pendiente de cerrar `SEC-FIX-001/004/005/006`.
+- **Current Phase:** `PHASE_9` — HIGH FASE 3 remediados (SEC-FIX-001/004/005/006 `[x]`); pendiente re-auditoría independiente TASK-030. FASE 9 en curso (TASK-045/046).
 - **Progress:** `42 / 46 tasks verified (91%)` — ⚠️ **no autoriza release**: `.factory/SECURITY_AUDIT.md` §5 = `BLOCKED`
 - **State Legend:**
   - `- [ ]` Pending (Listo para ejecutar)
@@ -449,7 +449,7 @@
   - **Verification:** `pytest tests/test_auth_bruteforce.py` (nuevo: 5 intentos fallidos → 429 y lockout temporal; usuario distinto no afectado) + `pytest tests/test_auth.py -q` sin regresión
   - **Retries:** `0/3`
 
-- [ ] **SEC-FIX-006:** [HIGH · VULN-009] Actualizar dependencias con advisories HIGH/CRITICAL y hacer el SCA bloqueante en CI. Mínimos: `python-jose>=3.4.0`, `python-multipart>=0.0.30`, `cryptography>=48.0.1`, `lxml>=6.1.0`, `torch>=2.6.0` (o retirar torch/ultralytics del runtime de API); `next` 15/16 (rama 14 EOL). Pinear `sha256` del modelo YOLO antes de `torch.load`. Añadir `pip-audit -r backend/requirements.txt` y `npm audit --audit-level=high` al pipeline.
+- [x] **SEC-FIX-006:** [HIGH · VULN-009] Actualizar dependencias con advisories HIGH/CRITICAL y hacer el SCA bloqueante en CI. Mínimos: `python-jose>=3.4.0`, `python-multipart>=0.0.30`, `cryptography>=48.0.1`, `lxml>=6.1.0`, `torch>=2.6.0` (o retirar torch/ultralytics del runtime de API); `next` 15/16 (rama 14 EOL). Pinear `sha256` del modelo YOLO antes de `torch.load`. Añadir `pip-audit -r backend/requirements.txt` y `npm audit --audit-level=high` al pipeline. **CORREGIDO:** base runtime sin `torch`/`ultralytics` (movidos a `backend/requirements-vision.txt` con `torch>=2.6.0`); upgrades `python-jose 3.5.0`, `python-multipart 0.0.34`, `cryptography 50.0.2`, `lxml 6.1.3` y `passlib 1.7.4` (1.9.3 no existe en PyPI: el pin previo rompía CI); `YOLOLoader._verify_integrity` exige sha256 (`YOLO_MODEL_SHA256`) y prohíbe descarga automática en production; CI con `pip-audit` + `npm audit --omit=dev` **bloqueantes** y allowlist auditada (`docs/security/SCA_ALLOWLIST.md`); frontend Next 14 EOL → **Next 16.4.6 + React 19.3.1 + react-leaflet 5 + lucide-react 1.77**. Evidencia: `pip-audit` con allowlist → **0 vulnerabilidades**; `npm audit --omit=dev --audit-level=high` → **0**; `npm ci && tsc --noEmit && next build` sobre copia del repo → OK (4 rutas); `pytest` 157 passed.
   - **Owner:** `@builder` -> `@qa-verifier`
   - **Depends On:** `TASK-029`
   - **Spec Ref:** SECURITY_AUDIT.md §3 VULN-009

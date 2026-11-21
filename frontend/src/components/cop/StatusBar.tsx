@@ -1,4 +1,5 @@
 "use client";
+
 import { useRouter } from "next/navigation";
 import { LogOut } from "lucide-react";
 import { useAuthStore } from "@/store/auth-store";
@@ -15,6 +16,7 @@ export default function StatusBar() {
   );
 
   const apiOk = !health.error && health.data?.status === "ok";
+  const checking = health.loading && !health.data;
 
   const handleLogout = () => {
     logout();
@@ -22,27 +24,40 @@ export default function StatusBar() {
   };
 
   return (
-    <div className="flex gap-4 px-4 py-1 bg-gray-900 text-xs font-mono items-center border-b border-gray-700 overflow-x-auto">
-      <div className="flex items-center gap-1 shrink-0">
-        <span className={`w-2 h-2 rounded-full ${health.loading && !health.data ? "bg-yellow-400" : apiOk ? "bg-green-400" : "bg-red-400 animate-pulse"}`} />
-        <span className={apiOk ? "text-green-400" : "text-red-400"}>
-          API {health.loading && !health.data ? "..." : apiOk ? "OPERATIVA" : "SIN CONEXION"}
+    <div className="flex items-center gap-3 border-t border-stroke/70 bg-surface-sunken/70 px-3 py-1 text-2xs sm:px-4">
+      <span className="flex shrink-0 items-center gap-1.5">
+        <span
+          className={`status-dot ${
+            checking ? "bg-signal-warning" : apiOk ? "status-operational" : "status-critical"
+          }`}
+          aria-hidden="true"
+        />
+        <span className={apiOk ? "text-signal-success" : checking ? "text-signal-warning" : "text-signal-danger"}>
+          {checking ? "VERIFICANDO" : apiOk ? "ENLACE OPERATIVO" : "SIN ENLACE"}
         </span>
+      </span>
+
+      <span className="hidden h-3 w-px bg-stroke sm:block" aria-hidden="true" />
+      <span className="hidden font-mono text-3xs text-ink-faint sm:inline">
+        núcleo C2 · modular monolith
+      </span>
+
+      <div className="ml-auto flex min-w-0 items-center gap-3">
+        {username && (
+          <span className="min-w-0 truncate text-3xs text-ink-faint">
+            OP: <span className="text-ink-muted">{username}</span>
+            {clearance && <span className="ml-1 font-mono text-ink-faint">[{clearance}]</span>}
+          </span>
+        )}
+        <button
+          type="button"
+          onClick={handleLogout}
+          className="flex shrink-0 items-center gap-1 text-3xs font-semibold uppercase tracking-[0.12em] text-ink-faint transition-colors hover:text-signal-danger"
+        >
+          <LogOut size={11} aria-hidden="true" />
+          Salir
+        </button>
       </div>
-      <div className="flex-1" />
-      {username && (
-        <span className="text-gray-400 shrink-0">
-          OP: <span className="text-green-400">{username}</span>
-          {clearance && <span className="text-gray-600"> [{clearance}]</span>}
-        </span>
-      )}
-      <button
-        onClick={handleLogout}
-        className="flex items-center gap-1 text-gray-500 hover:text-red-400 transition-colors shrink-0"
-      >
-        <LogOut size={12} />
-        SALIR
-      </button>
     </div>
   );
 }
