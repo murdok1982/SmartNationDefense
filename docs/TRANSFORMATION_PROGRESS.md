@@ -77,6 +77,13 @@
 - **B1-02 — GitHub Actions CI (`085bbe2`):** `.github/workflows/ci.yml` (YAML valid, `yaml.safe_load: CI`); steps: checkout → setup-python 3.12 → `pip install -r backend/requirements.txt` + `pip install pytest==8.3.4` → `python -m pytest backend/tests -q` (sin saltar) → `python -m compileall -q backend` → bandit fallback py_compile → `pip check` → security gate `python scripts/validate_all.py` → frontend build advisory (continue-on-error). Real: suite **40 passed exit 0**; pytest -q exit 0; structure validated.
 - **B1-04 — API Contracts (`496b0b5`):** `backend/contracts/openapi.json` — OpenAPI REAL (`cd backend && python3 -c "import json; from app.main import app; json.dump(app.openapi(), open('contracts/openapi.json','w'), indent=2)"` — **168 paths**); `backend/contracts/README.md`; `docs/architecture/CONTRACTS.md` — 136 rows, 134 endpoints `/api/v1`; `backend/tests/test_contracts.py` — **5 passed**; drift: contract ⊆ live app routes.
 
+### FASE 3a — Rate-Limit Safety (TASK-012/013) — COMPLETO (Verificado 21-11-2026)
+
+| Tarea | Estado | Evidencia |
+|---|---|---|
+| TASK-012 (TD-009 + N-06 path-blindness) | `VERIFIED` | `get_limiter_key` en rate_limit.py:132; `bf_attempts`/`lockout` keys path-aware en osint/auth.py; snippet: `is_locked login-path: False`, `is_locked mfa-path: False`; pytest 40 passed |
+| TASK-013 (TD-010 fail-open CB) | `VERIFIED` | `CircuitBreaker` L150, OPEN/HALF_OPEN/CLOSED (L169-170), keys `rl:state`/`rl:count`/`rl:failures`; report_success → CLOSED; pytest 40 passed |
+
 ### FASE 1 — COMPLETO (Verificado 21-11-2026)
 
 | Entregable | Archivo | Verificación |

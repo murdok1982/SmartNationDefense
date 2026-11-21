@@ -109,7 +109,7 @@
   - **Verification:** `ls backend/migrations/archived/ && alembic heads`
   - **Retries:** `0/3`
 
-- [ ] **TASK-012:** TD-009 + N-06 — Rate-limit path-blindness fix (osint auth, v1, intel auth).
+- [x] **TASK-012:** TD-009 + N-06 — Rate-limit path-blindness fix (osint auth, v1, intel auth). (VERIFICADO: `get_limiter_key(user, path)` L132; BruteForce keys path-aware: `lockout:`/`bf_attempts:` en osint/auth.py); snippet real: `is_locked login-path: False`, `is_locked mfa-path: False` (con fake Redis); `grep -nE "get_limiter_key|path-aware" app/core/rate_limit.py` — L132-136; pytest full: 40 passed)
   - **Owner:** `@builder` -> `@qa-verifier`
   - **Depends On:** `NONE`
   - **Spec Ref:** SPEC.md §3 (AC-11)
