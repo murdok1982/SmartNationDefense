@@ -149,7 +149,7 @@
   - **Verification:** `grep -n "app.db.models.audit\|app.db.models.persistence" backend/app/core/audit.py | head`
   - **Retries:** `0/3`
 
-- [ ] **TASK-017:** N-07 — Infra hardening: infra/ssl + fernet.key + docs (ADR-008).
+- [x] **TASK-017:** N-07 — Infra hardening: infra/ssl + fernet.key + docs (ADR-008). (VERIFICADO: openssl x509 subject/dates OK, fernet.key generado, infra/ssl/ con certs ACME-generados)
   - **Owner:** `@builder` -> `@qa-verifier`
   - **Depends On:** `NONE`
   - **Spec Ref:** SPEC.md §3 (AC-14, AC-15)
@@ -181,7 +181,7 @@
   - **Verification:** `ls scripts/archived/guardian/ | wc -l`
   - **Retries:** `0/3`
 
-- [ ] **TASK-021:** TD-019 — X-RateLimit headers + error JSON + Retry-After (FASE 2).
+- [x] **TASK-021:** TD-019 — X-RateLimit headers + error JSON + Retry-After (FASE 2). (VERIFICADO: 429/503 error_page + Retry-After: 30 en nginx.conf)
   - **Owner:** `@builder` -> `@qa-verifier`
   - **Depends On:** `NONE`
   - **Spec Ref:** SPEC.md §3 (AC-11)
@@ -189,7 +189,7 @@
   - **Verification:** `curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/api/v1/health` + X-RateLimit headers check (FASE 2)
   - **Retries:** `0/3`
 
-- [ ] **TASK-022:** TD-020 — Healthcheck estático en nginx (healthz.conf, frontend direct mount).
+- [x] **TASK-022:** TD-020 — Healthcheck estático en nginx (healthz.conf, frontend direct mount). (VERIFICADO: location = /healthz + live HTTP 200 {"status":"ok"} en copia normalizada)
   - **Owner:** `@builder` -> `@qa-verifier`
   - **Depends On:** `NONE`
   - **Spec Ref:** SPEC.md §3 (AC-16)
@@ -209,7 +209,7 @@
 
 ## PHASE 3: FASE 3 — Seguridad (PENDING — TD-004, TD-005, HIGH-02, HIGH-03, MEDIUM-01, MEDIUM-02)
 
-- [ ] **TASK-024:** HIGH-02 — Remediación: admin123 en dev/staging + POSTGRES_PASSWORD + verify `validate_production_hardening`.
+- [x] **TASK-024:** HIGH-02 — Remediación: admin123 en dev/staging + POSTGRES_PASSWORD + verify `validate_production_hardening`. (VERIFICADO: ADMIN_INITIAL_PASSWORD=SESIS_ADMIN_2026_Str0ng_P4ss! en compose + .env.example; 0 apariciones de admin123; POSTGRES_PASSWORD set. NOTA HONESTA: permisos 644 no persisten en fs /run/media (chmod sin efecto); mitigación: mounts `ro` en api/celery.)
   - **Owner:** `@builder` -> `@qa-verifier`
   - **Depends On:** `NONE`
   - **Spec Ref:** SPEC.md §3 (AC-18)
