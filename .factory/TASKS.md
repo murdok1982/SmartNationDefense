@@ -77,7 +77,7 @@
 
 ## PHASE 2: FASE 2 — Backend Hardening (PENDING — FASE 0+1 terminados)
 
-- [ ] **TASK-008:** TD-001 — Consolidación de User: Unified User + IntelUserSchema + OsintUserSchema (ADR-003).
+- [x] **TASK-008:** TD-001 — Consolidación de User: Unified User + IntelUserSchema + OsintUserSchema (ADR-003). (VERIFICADO: 3 Users → 1 tablename (grep users = 1), persistence.User ÚNICA, intel/user.py y osint/user.py re-exportan (OU is IU is User → True), aliases IntelUserSchema/OsistUserSchema presentes, osint/case.py FK→User.__table__.c.id, pytest 35 passed)
   - **Owner:** `@builder` -> `@qa-verifier`
   - **Depends On:** `TASK-011` (MIGRATIONS-001 — verificar compatibilidad antes de arquitectura real)
   - **Spec Ref:** SPEC.md §1 (AC-08)
