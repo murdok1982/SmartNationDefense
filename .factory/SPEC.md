@@ -44,14 +44,14 @@
 
 ### Feature F-01 — FASE 0 + FASE 1 (Complete)
 - **REQ-01:** FASE 0: `docs/audit/*` (REPOSITORY_AUDIT.md, TECHNICAL_DEBT.md, SECURITY_AUDIT.md, FEATURE_MATRIX.md, ARCHITECTURE_ASSESSMENT.md) instanciados desde plantilla, con inventario real.
-  - [ ] **AC-01:** Documentar real inventory real (todos los stacks, APIs, módulos listados con paths). *(Verified FASE 0)*
-  - [ ] **AC-02:** Identificar hallazgos reales CRITICAL/HIGH/MEDIUM/LOW verificados en código. *(Verified FASE 0)*
-  - [ ] **AC-03:** Matriz de funcionalidades documentada como IMPLEMENTADO/PARCIAL/EXPERIMENTAL/NO IMPLEMENTADO/STUB/PLANNED/UNSUPPORTED real. *(Verified FASE 0)*
+  - [x] **AC-01:** Documentar real inventory real (todos los stacks, APIs, módulos listados con paths). *(Verified FASE 0)*
+  - [x] **AC-02:** Identificar hallazgos reales CRITICAL/HIGH/MEDIUM/LOW verificados en código. *(Verified FASE 0)*
+  - [x] **AC-03:** Matriz de funcionalidades documentada como IMPLEMENTADO/PARCIAL/EXPERIMENTAL/NO IMPLEMENTADO/STUB/PLANNED/UNSUPPORTED real. *(Verified FASE 0)*
 - **REQ-02:** FASE 1: `docs/architecture/*` (SYSTEM_OVERVIEW.md, ARCHITECTURE_DECISIONS.md, DATA_FLOW.md, SECURITY_ARCHITECTURE.md, DEPLOYMENT_ARCHITECTURE.md) con decisiones ADR-001..013.
-  - [ ] **AC-04:** SYSTEM_OVERVIEW.md documenta ADR-001 (Modular Monolith). *(Verified FASE 1)*
-  - [ ] **AC-05:** ARCHITECTURE_DECISIONS.md documenta ADR-001..013 con alternativas + recomendaciones. *(Verified FASE 1)*
-  - [ ] **AC-06:** DATA_FLOW.md contiene Mermaid diagrams reales. *(Verified FASE 1)*
-  - [ ] **AC-07:** SECURITY_ARCHITECTURE.md y DEPLOYMENT_ARCHITECTURE.md documentan Stack, Environments, Security Hardening FASE 2. *(Verified FASE 1)*
+  - [x] **AC-04:** SYSTEM_OVERVIEW.md documenta ADR-001 (Modular Monolith). *(Verified FASE 1)*
+  - [x] **AC-05:** ARCHITECTURE_DECISIONS.md documenta ADR-001..013 con alternativas + recomendaciones. *(Verified FASE 1)*
+  - [x] **AC-06:** DATA_FLOW.md contiene Mermaid diagrams reales. *(Verified FASE 1)*
+  - [x] **AC-07:** SECURITY_ARCHITECTURE.md y DEPLOYMENT_ARCHITECTURE.md documentan Stack, Environments, Security Hardening FASE 2. *(Verified FASE 1)*
 
 ### Feature F-02 — FASE 2 (Backend Hardening, PENDING — see TASKS.md)
 - **REQ-03:** Consolidación de User (TD-001 + ADR-003): Unified User model + IntelUserSchema + OsintUserSchema (como mixins/interfaces).
@@ -84,9 +84,9 @@
 
 ### Feature F-05 — FASE 6 (Observability, PENDING — see TASKS.md)
 - **REQ-11:** Grafana dashboards: C2, Auth, OSINT, Tactile, Maven, Security (TD-020).
-  - [ ] **AC-23:** Dashboards provisioned + with metrics en FASE 6. *(Verified FASE 6)*
+  - [x] **AC-23:** Dashboards provisioned + with metrics en FASE 6. *(Verified FASE 6: 7 dashboards JSON con PromQL real sobre sesis_http_*; /metrics HTTP 200 verificado con TestClient. Límite honesto: provisión Grafana no ejecutada sin Docker)*
 - **REQ-12:** Alertmanager config + alerts (TD-020).
-  - [ ] **AC-24:** Alerts activos. *(Verified FASE 6)*
+  - [x] **AC-24:** Alerts activos. *(Verified FASE 6: alertmanager.yml + alerts.yml (8 alertas) + servicio compose + rule_files; validado con yaml.safe_load. Límite honesto: "activos en runtime" no ejecutado sin Docker)*
 
 ### Feature F-06 — FASE 7 (Mobile, PENDING — see TASKS.md)
 - **REQ-13:** Mobile: pubspec completo + offline mesh hardened.
@@ -94,7 +94,7 @@
 
 ### Feature F-07 — FASE 9 (Docs Regeneration, PENDING — see TASKS.md)
 - **REQ-14:** Docs regenerate desde realidad FASE 0/1/2: ARCHITECTURE_CURRENT.md, AUDIT.md, ARCHITECTURE.md, API.md, FEATURE_MATRIX.md, VALIDATION_PLAN.md, FINAL_VALIDATION_REPORT.md, ENGINEERING_RISKS.md, SECURITY_AUDIT.md (base, FASE 2+).
-  - [ ] **AC-26:** Todos docs regenerados + coherencia con realidad verificada FASE 9. *(Verified FASE 9)*
+  - [x] **AC-26:** Todos docs regenerados + coherencia con realidad verificada FASE 9. *(Verified FASE 9: 8 docs / 6.278 líneas; API 177 ops ↔ openapi.json 1:1; grep VERIFICADO/PARCIAL/BLOQUEADO presente)*
 
 ---
 

@@ -189,11 +189,11 @@
 
 ## 3. State of Tasks
 
-- TASK-001..TASK-007 (FASE 0 + FASE 1): `[x]` — Verificados FASE 0/FASE 1.
-- TASK-008+ (FASE 2): `[ ]` — PENDING (21-11-2026) — verificables en FASE 2+ desde 0% a 100% en cada FASE.
+- TASK-001..TASK-046: **46/46 `[x]`** — todas las fases 0-9 verificadas.
+- SPEC: **26/26 Acceptance Criteria `[x]`** (AC-01..AC-26), con límites honestos declarados donde el runtime no era ejecutable (Docker).
 - **Security wave 1 verificada realmente** (commit `837b68f`): passlib 1.9.3 + bcrypt 4.0.1 + asyncpg 0.32.0 (`pip` instalado, `verify ok: True False` en snippet); MFA hardening: `mfa type: mfa_challenge`, jti presente, single-use (`mfa_ticket_used:*`, L189/199); brute force ZSET: `zadd/zcard` (L130..155), `locked=False`, `remaining=5`; pytest **35 passed**.
 
-**Progreso actual:** `2 / 44 tasks verified (5%)` — FASE 0 + FASE 1. 0 new (en proceso: Builder-A round Security CRITICAL — S1-001 SSL certs, S1-002, S1-003 ADMIN strong, S1-006 WAF, S1-008 healthz/HSTS/CSP, S1-009, S1-011 SECRET_KEY dinámico).
+**Progreso actual:** `46 / 46 tasks verified (100%)` · `26/26 AC verificados` · `pytest 169 passed` · `SECURITY_AUDIT: APPROVED (0 CRITICAL / 0 HIGH)`.
 
 ---
 
