@@ -34,7 +34,7 @@ async def lifespan(app: FastAPI):
     await check_db_connected()
     logger.info("Database connected")
 
-    # Redis with retry
+    # Redis con retry
     redis_ok = False
     for attempt in range(5):
         try:
@@ -50,6 +50,14 @@ async def lifespan(app: FastAPI):
                 logger.warning(f"Redis retry {attempt + 1}: {e}")
             else:
                 logger.warning(f"Redis unavailable after 5 retries: {e}")
+
+    if not redis_ok and settings.security_fail_closed:
+        # SEC-FIX-001: sin Redis no hay rate-limit, revocación de JWT ni
+        # lockout distribuido fiables. En staging/production no arrancamos.
+        raise RuntimeError(
+            "Redis no disponible y SECURITY_FAIL_MODE=closed: se aborta el arranque "
+            "para no degradar los controles de seguridad."
+        )
 
     # NATS
     try:
@@ -95,7 +103,11 @@ from app.core.rate_limit import RateLimitMiddleware
 from app.core.auth_middleware import AuthMiddleware
 from app.db.redis_pool import get_redis_client
 
-app.add_middleware(RateLimitMiddleware, redis_client=get_redis_client())
+app.add_middleware(
+    RateLimitMiddleware,
+    redis_client=get_redis_client(),
+    fail_closed=settings.security_fail_closed,
+)
 app.add_middleware(AuthMiddleware)
 
 

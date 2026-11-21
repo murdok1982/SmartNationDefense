@@ -506,7 +506,7 @@ async def mfa_setup(user: CurrentUser) -> MfaSetupResponse:
     )
 
 
-@router.post("/mfa/enable", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/mfa/enable", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def mfa_enable(
     request: Request,
     body: MfaEnableRequest,
@@ -536,7 +536,7 @@ async def mfa_enable(
     )
 
 
-@router.post("/mfa/disable", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/mfa/disable", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def mfa_disable(
     request: Request,
     body: MfaEnableRequest,
@@ -597,7 +597,7 @@ async def refresh(body: TokenRefresh, db: DBSession) -> TokenResponse:
     )
 
 
-@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def logout(
     request: Request,
     user: CurrentUser,
@@ -646,7 +646,7 @@ async def get_me(user: CurrentUser) -> User:
     return user
 
 
-@router.post("/change-password", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/change-password", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def change_password(
     body: PasswordChange,
     user: CurrentUser,
@@ -778,7 +778,7 @@ async def bootstrap_admin(
     return user
 
 
-@router.post("/revoke-all-tokens", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/revoke-all-tokens", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def revoke_all_tokens(
     user: CurrentUser,
     db: DBSession,

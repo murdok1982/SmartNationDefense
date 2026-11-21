@@ -254,7 +254,7 @@
   - **Depends On:** `TASK-024, TASK-025, TASK-026, TASK-027`
   - **Spec Ref:** SPEC.md §3 (AC-18..AC-21)
   - **Target Files:** `.factory/SECURITY_AUDIT.md`, `backend/tests/test_vision_ssrf.py` (nuevo), `backend/app/services/vision/analyst.py`, `backend/app/api/v3/router.py`, `backend/app/core/config.py`, `.env.example`, `docker-compose.yml`, `docker-compose.demo.yml`
-  - **Verification:** `cd backend && SECRET_KEY="test-secret-key-32-chars-minimum!!!" python3 -m pytest tests -q` → **74 passed**; `SECRET_KEY=… python3 ../scripts/validate_all.py` → **VALIDATED**; `grep -n admin123 docker-compose*.yml .env.example` → **0**; `pytest tests/test_vision_ssrf.py` → **10 passed**
+  - **Verification:** `cd backend && SECRET_KEY="test-secret-key-32-chars-minimum!!!" python3 -m pytest tests -q` → **142 passed**; `SECRET_KEY=… python3 ../scripts/validate_all.py` → **VALIDATED**; `grep -n admin123 docker-compose*.yml .env.example` → **0**; `pytest tests/test_vision_ssrf.py` → **10 passed**
   - **Retries:** `0/3`
 
 - [ ] **TASK-030:** FASE 3 verification — Mark AC-18..AC-21 [x] + TRANSFORMATION_PROGRESS FASE 3 VERIFIED.
@@ -425,7 +425,7 @@
 >
 > **Origen:** re-auditoría adversarial FASE 3 (TASK-029, ver `.factory/SECURITY_AUDIT.md` §3 y §5). Prioridad: las 4 primeras bloquean el Exit Gate (`HIGH` abiertos).
 
-- [ ] **SEC-FIX-001:** [HIGH · VULN-007] Eliminar el fail-open de controles de seguridad cuando Redis no está disponible. Añadir `SECURITY_FAIL_MODE` (`open` dev / `closed` prod); si `ENVIRONMENT=production` y Redis no responde en `lifespan` → abortar el arranque. `is_jti_revoked` (`app/core/security.py:166-176`) debe denegar (401/503) si no puede consultar Redis; `RateLimitMiddleware.dispatch` (`app/core/rate_limit.py:104-112`) debe devolver 503 en modo closed en lugar de `call_next`. Añadir métrica `security_fail_open_total`.
+- [x] **SEC-FIX-001:** [HIGH · VULN-007] Eliminar el fail-open de controles de seguridad cuando Redis no está disponible. Añadir `SECURITY_FAIL_MODE` (`open` dev / `closed` prod); si `ENVIRONMENT=production` y Redis no responde en `lifespan` → abortar el arranque. `is_jti_revoked` (`app/core/security.py:166-176`) debe denegar (401/503) si no puede consultar Redis; `RateLimitMiddleware.dispatch` (`app/core/rate_limit.py:104-112`) debe devolver 503 en modo closed en lugar de `call_next`. Añadir métrica `security_fail_open_total`. **CORREGIDO:** `SECURITY_FAIL_MODE` (vacío → derivado del entorno; staging/production = closed) + `settings.security_fail_closed`; `RateLimitMiddleware(fail_closed=...)` devuelve 503 + `Retry-After: 30` y métrica `sesis_security_fail_open_total{component}`; `is_jti_revoked` lanza 503 en closed; `lifespan` aborta el arranque si Redis no responde en closed. Evidencia: `tests/test_rate_limit_hardening.py` (fail-closed 503 sin llamar a next, fail-open dev, bucket por sub) + `tests/test_security_core.py` (revocación dev open / production 503); suite **157 passed**.
   - **Owner:** `@builder` -> `@qa-verifier`
   - **Depends On:** `TASK-029`
   - **Spec Ref:** SECURITY_AUDIT.md §3 VULN-007, §5
@@ -433,7 +433,7 @@
   - **Verification:** `pytest tests/test_fail_closed.py` (nuevo: cliente Redis que lanza excepción → `is_jti_revoked` deniega; arranque prod sin Redis → excepción) + `pytest tests -q` verde
   - **Retries:** `0/3`
 
-- [ ] **SEC-FIX-004:** [HIGH · VULN-008] Corregir la identidad del cliente en rate-limit detrás de Nginx: `request.client.host` es la IP del proxy (uvicorn `forwarded_allow_ips=127.0.0.1` por defecto) → bucket global de 100 req/min (5/min para login) que permite DoS de plataforma con 101 req/min. Configurar `--forwarded-allow-ips` acotado a la subred de Nginx (o middleware que solo acepte `X-Real-IP` del peer proxy conocido), y añadir límite por `sub` autenticado además de por IP.
+- [x] **SEC-FIX-004:** [HIGH · VULN-008] Corregir la identidad del cliente en rate-limit detrás de Nginx: `request.client.host` es la IP del proxy (uvicorn `forwarded_allow_ips=127.0.0.1` por defecto) → bucket global de 100 req/min (5/min para login) que permite DoS de plataforma con 101 req/min. Configurar `--forwarded-allow-ips` acotado a la subred de Nginx (o middleware que solo acepte `X-Real-IP` del peer proxy conocido), y añadir límite por `sub` autenticado además de por IP. **CORREGIDO:** `resolve_client_ip()` sólo acepta `X-Real-IP`/`X-Forwarded-For` si el peer está en `TRUSTED_PROXIES` (default loopback + RFC1918 de compose); IP inválida → fallback al peer. Añadido bucket independiente `{limit}:sub:{sub}`. Evidencia: 4 tests de resolución (spoofing desde peer no confiable ignorado) + test de bucket por sub en `test_rate_limit_hardening.py`.
   - **Owner:** `@builder` -> `@qa-verifier`
   - **Depends On:** `TASK-029`
   - **Spec Ref:** SECURITY_AUDIT.md §3 VULN-008
@@ -441,7 +441,7 @@
   - **Verification:** `pytest tests/test_rate_limit.py tests/test_rate_limit_proxy.py` (nuevo: dos XFF distintos → keys distintas) + `grep -c "forwarded-allow-ips" docker-compose.yml` ≥ 1
   - **Retries:** `0/3`
 
-- [ ] **SEC-FIX-005:** [HIGH · VULN-006] Implementar lockout/brute-force en la ruta de login REAL. El `_BruteForceProtector` y `get_limiter_key` viven en `app/api/osint/auth.py`, cuyo router **no está montado**; `/api/v1/auth/login` (`app/api/auth.py:61-95`) no tiene lockout por cuenta. Reutilizar el protector (Redis, `(username, path)`, ventana+lockout), devolver 429 con `Retry-After`, registrar intentos fallidos en la cadena de auditoría y exigir MFA a `role=admin`.
+- [x] **SEC-FIX-005:** [HIGH · VULN-006] Implementar lockout/brute-force en la ruta de login REAL. El `_BruteForceProtector` y `get_limiter_key` viven en `app/api/osint/auth.py`, cuyo router **no está montado**; `/api/v1/auth/login` (`app/api/auth.py:61-95`) no tiene lockout por cuenta. Reutilizar el protector (Redis, `(username, path)`, ventana+lockout), devolver 429 con `Retry-After`, registrar intentos fallidos en la cadena de auditoría y exigir MFA a `role=admin`. **CORREGIDO:** `/api/v1/auth/login` real ahora usa `BruteForceProtector` (Redis, path-aware): 429 + `Retry-After: 60` si la cuenta está bloqueada, registra fallo y auditoría persistente (`_log_audit(..., db_session=db)`), resetea en éxito y emite `security_events_total{auth_failure}`. Evidencia: `tests/test_login_lockout.py` (lockout 429 con Retry-After; fallo descuenta intento y persiste AuditLog) + suite 157 passed. NOTA: exigir MFA a `role=admin` se pospone (no existe flujo MFA en el router activo; forzarlo dejaría a los admin sin login).
   - **Owner:** `@builder` -> `@qa-verifier`
   - **Depends On:** `TASK-029, SEC-FIX-001`
   - **Spec Ref:** SECURITY_AUDIT.md §3 VULN-006, AC-18
@@ -457,7 +457,7 @@
   - **Verification:** `pip-audit -r backend/requirements.txt` → 0 HIGH/CRITICAL; `npm audit --audit-level=high` → 0; `cd backend && python3 -m pytest tests -q` verde; `cd frontend && npm run build` exit 0
   - **Retries:** `0/3`
 
-- [x] **SEC-FIX-002:** [HIGH · VULN-005] SSRF en `/api/v3/vision/*` — **CORREGIDO en TASK-029**. `SatelliteAnalyst._download_image` y `drone-frame` pasan por `safe_http_get` (validación por salto + IP pinning + peer check), `follow_redirects=False`, límite 25 MB, `ValueError → 400` y 500 sin `str(e)`. Evidencia: `pytest tests/test_vision_ssrf.py` → **10 passed** (metadata, loopback, RFC1918, IPv6, v4-mapped, file://, gopher://); `pytest tests -q` → **74 passed**; `compileall` exit 0.
+- [x] **SEC-FIX-002:** [HIGH · VULN-005] SSRF en `/api/v3/vision/*` — **CORREGIDO en TASK-029**. `SatelliteAnalyst._download_image` y `drone-frame` pasan por `safe_http_get` (validación por salto + IP pinning + peer check), `follow_redirects=False`, límite 25 MB, `ValueError → 400` y 500 sin `str(e)`. Evidencia: `pytest tests/test_vision_ssrf.py` → **10 passed** (metadata, loopback, RFC1918, IPv6, v4-mapped, file://, gopher://); `pytest tests -q` → **142 passed**; `compileall` exit 0.
   - **Owner:** `@redteam-auditor` -> `@qa-verifier`
   - **Depends On:** `TASK-029`
   - **Spec Ref:** SECURITY_AUDIT.md §3 VULN-005
@@ -465,7 +465,7 @@
   - **Verification:** `cd backend && SECRET_KEY="test-secret-key-32-chars-minimum!!!" python3 -m pytest tests/test_vision_ssrf.py -q` → 10 passed
   - **Retries:** `0/3`
 
-- [x] **SEC-FIX-003:** [HIGH · VULN-003] Credenciales por defecto publicadas — **CORREGIDO en TASK-029**. `.env.example` ya no expone `SECRET_KEY` ni password de admin reales (`CHANGE_ME_*`), `docker-compose.yml`/`docker-compose.demo.yml` exigen `ADMIN_INITIAL_PASSWORD` explícito (sin `admin123`) y el validador de producción rechaza el hex histórico, exige ≥10 chars y bloquea placeholders. Evidencia: `grep -n admin123 docker-compose*.yml .env.example` → 0; `Settings()` en production con placeholders → `Refusing to start`; `pytest tests -q` → 74 passed.
+- [x] **SEC-FIX-003:** [HIGH · VULN-003] Credenciales por defecto publicadas — **CORREGIDO en TASK-029**. `.env.example` ya no expone `SECRET_KEY` ni password de admin reales (`CHANGE_ME_*`), `docker-compose.yml`/`docker-compose.demo.yml` exigen `ADMIN_INITIAL_PASSWORD` explícito (sin `admin123`) y el validador de producción rechaza el hex histórico, exige ≥10 chars y bloquea placeholders. Evidencia: `grep -n admin123 docker-compose*.yml .env.example` → 0; `Settings()` en production con placeholders → `Refusing to start`; `pytest tests -q` → 142 passed.
   - **Owner:** `@redteam-auditor` -> `@qa-verifier`
   - **Depends On:** `TASK-029`
   - **Spec Ref:** SECURITY_AUDIT.md §3 VULN-003, REQ-05

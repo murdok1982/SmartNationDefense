@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -60,12 +60,45 @@ class UserResponse(BaseModel):
 @router.post("/login", response_model=TokenResponse)
 async def login(
     payload: LoginRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
+    """Login con lockout distribuido (SEC-FIX-005).
+
+    El protector de fuerza bruta vive en Redis y es path-aware: el contador
+    de `/api/v1/auth/login` no se mezcla con el de MFA u otros endpoints.
+    """
+    from app.api.osint.auth import BruteForceProtector, _log_audit
+    from app.core.rate_limit import resolve_client_ip
+
+    client_ip = resolve_client_ip(request)
+    path = request.url.path
+
+    if await BruteForceProtector.is_locked(payload.username, path):
+        remaining = await BruteForceProtector.get_remaining_attempts(payload.username, path)
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Cuenta bloqueada temporalmente. Intentos restantes: {remaining}",
+            headers={"Retry-After": "60"},
+        )
+
     from app.db.models.persistence import User
     result = await db.execute(select(User).where(User.username == payload.username))
     user = result.scalars().first()
     if not user or not verify_password(payload.password, user.hashed_password):
+        await BruteForceProtector.record_failure(payload.username, client_ip, path)
+        await _log_audit(
+            user_id="unknown",
+            action="LOGIN",
+            resource="user",
+            resource_id=payload.username,
+            ip=client_ip,
+            success=False,
+            error="Invalid credentials",
+            db_session=db,
+        )
+        from app.core.metrics import record_security_event
+        record_security_event("auth_failure", "auth")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Credenciales invalidas",
@@ -75,6 +108,8 @@ async def login(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Usuario inactivo",
         )
+
+    await BruteForceProtector.record_success(payload.username, client_ip, path)
 
     token_data = {"sub": user.id, "username": user.username, "role": user.role, "clearance": user.classification_level}
     access_token = create_access_token(token_data)

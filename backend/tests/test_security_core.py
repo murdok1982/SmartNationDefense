@@ -126,13 +126,30 @@ class TestRevocation:
     async def test_missing_jti_is_not_revoked(self):
         assert await is_jti_revoked(None) is False
 
-    async def test_revoke_without_redis_fails_open(self):
+    async def test_revoke_without_redis_fails_open_in_dev(self, monkeypatch):
+        from app.core.config import settings
+
+        monkeypatch.setattr(settings, "ENVIRONMENT", "development", raising=False)
+        monkeypatch.setattr(settings, "SECURITY_FAIL_MODE", "open", raising=False)
         with patch(
             "app.db.redis_pool.get_redis_pool",
             side_effect=RuntimeError("redis down"),
         ):
             await revoke_jti("jti-x", int(time.time()) + 60)
             assert await is_jti_revoked("jti-x") is False
+
+    async def test_revoke_without_redis_fails_closed_in_production(self, monkeypatch):
+        from app.core.config import settings
+
+        monkeypatch.setattr(settings, "ENVIRONMENT", "production", raising=False)
+        monkeypatch.setattr(settings, "SECURITY_FAIL_MODE", "closed", raising=False)
+        with patch(
+            "app.db.redis_pool.get_redis_pool",
+            side_effect=RuntimeError("redis down"),
+        ):
+            with pytest.raises(HTTPException) as exc:
+                await is_jti_revoked("jti-y")
+        assert exc.value.status_code == 503
 
 
 class TestGetCurrentUser:

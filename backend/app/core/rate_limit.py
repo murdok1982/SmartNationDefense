@@ -1,18 +1,65 @@
 """
 Rate Limiting Middleware - Sliding Window con Redis.
 Protege contra DDoS y abuso de API en sistemas militares.
+
+SEC-FIX-001: la postura ante caídas de Redis es configurable
+(`SECURITY_FAIL_MODE`); en staging/production por defecto es fail-closed
+(503) y el arranque aborta si Redis no responde.
+SEC-FIX-004: detrás de Nginx la IP del peer es la del proxy; se resuelve
+`X-Real-IP`/`X-Forwarded-For` sólo si el peer es un proxy de confianza, y se
+añade un bucket independiente por `sub` autenticado.
 """
 import asyncio
+import ipaddress
 import time
 import hashlib
 import uuid
 from fastapi import Request, status
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
-from typing import Dict, Any, Callable
+from typing import Dict, Any, Callable, Optional
 import logging
 
+from app.core.config import settings
+
 logger = logging.getLogger("sesis.security.ratelimit")
+
+
+def _trusted_proxy_networks() -> list:
+    networks = []
+    for entry in settings.TRUSTED_PROXIES.split(","):
+        entry = entry.strip()
+        if not entry:
+            continue
+        try:
+            networks.append(ipaddress.ip_network(entry, strict=False))
+        except ValueError:
+            logger.warning("TRUSTED_PROXIES ignorado (entrada inválida): %s", entry)
+    return networks
+
+
+def resolve_client_ip(request: Request) -> str:
+    """IP real del cliente, sin confiar en cabeceras de peers no confiables."""
+    peer = request.client.host if request.client else "unknown"
+    try:
+        peer_addr = ipaddress.ip_address(peer)
+    except ValueError:
+        return peer
+
+    trusted = _trusted_proxy_networks()
+    if not any(peer_addr in net for net in trusted):
+        return peer
+
+    candidate = request.headers.get("x-real-ip", "").strip()
+    if not candidate:
+        forwarded = request.headers.get("x-forwarded-for", "")
+        candidate = forwarded.split(",")[0].strip() if forwarded else ""
+    if not candidate:
+        return peer
+    try:
+        return str(ipaddress.ip_address(candidate))
+    except ValueError:
+        return peer
 
 
 class SlidingWindowRateLimiter:
@@ -74,13 +121,26 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         "classified": (50, 60),
     }
 
-    def __init__(self, app, redis_client):
+    def __init__(self, app, redis_client, fail_closed: Optional[bool] = None):
         super().__init__(app)
         self.limiter = SlidingWindowRateLimiter(redis_client)
         self.redis = redis_client
+        self.fail_closed = settings.security_fail_closed if fail_closed is None else fail_closed
+
+    def _unavailable(self, component: str, error: Exception):
+        from app.core.metrics import record_fail_open
+        record_fail_open(component)
+        logger.error("Rate limiter no disponible (%s): %s", component, error)
+        if self.fail_closed:
+            return JSONResponse(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                content={"detail": "Servicio de control de tasa no disponible"},
+                headers={"Retry-After": "30"},
+            )
+        return None
 
     async def dispatch(self, request: Request, call_next: Callable):
-        client_ip = request.client.host if request.client else "unknown"
+        client_ip = resolve_client_ip(request)
         api_key = request.headers.get("X-API-Key", "")
         key_parts = [client_ip]
         if api_key:
@@ -106,8 +166,20 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         key = f"{limit_key}:{':'.join(key_parts)}"
         try:
             allowed, info = await self.limiter.is_allowed(key, max_req, window)
+
+            # SEC-FIX-004: bucket independiente por identidad autenticada.
+            principal = getattr(request.state, "principal", None) or {}
+            subject = principal.get("sub") if isinstance(principal, dict) else None
+            if subject:
+                sub_allowed, sub_info = await self.limiter.is_allowed(
+                    f"{limit_key}:sub:{subject}", max_req, window
+                )
+                if not sub_allowed:
+                    allowed, info = sub_allowed, sub_info
         except Exception as e:
-            logger.error(f"Rate limiter no disponible ({e}); peticion permitida")
+            response = self._unavailable("rate_limit", e)
+            if response is not None:
+                return response
             return await call_next(request)
 
         if not allowed:

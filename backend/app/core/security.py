@@ -172,6 +172,14 @@ async def is_jti_revoked(jti: Optional[str]) -> bool:
         return bool(await redis_client.exists(f"revoked:{jti}"))
     except Exception as e:
         logger.warning(f"No se pudo verificar la revocacion del token: {e}")
+        from app.core.metrics import record_fail_open
+        record_fail_open("jti_revocation")
+        if settings.security_fail_closed:
+            # SEC-FIX-001: no se puede demostrar que el token no está revocado.
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Servicio de verificacion de tokens no disponible",
+            )
         return False
 
 

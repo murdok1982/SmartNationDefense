@@ -36,7 +36,7 @@ services:
       PRODUCTION: "true"
       ENVIRONMENT: "production"
       DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://sesis:change-me-in-production@postgres:5432/sesis}
-      ADMIN_INITIAL_PASSWORD: ${ADMIN_INITIAL_PASSWORD:-admin123}
+      ADMIN_INITIAL_PASSWORD: ${ADMIN_INITIAL_PASSWORD:?ADMIN_INITIAL_PASSWORD debe definirse explicitamente (sin default inseguro)}
     depends_on:
       postgres:
         condition: service_healthy

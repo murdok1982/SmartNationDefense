@@ -1,7 +1,10 @@
+import hashlib
 import logging
 import shutil
 from pathlib import Path
 from typing import Optional
+
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -45,10 +48,48 @@ class YOLOLoader:
                     f"{MODEL_DIR}"
                 )
 
+        self._verify_integrity(path)
         self._model = YOLO(str(path))
         return self._model
 
+    @staticmethod
+    def _sha256(path: Path) -> str:
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+
+    def _verify_integrity(self, path: Path) -> None:
+        """SEC-FIX-006: pin del artefacto antes de pasarlo a torch.load.
+
+        En production el hash es obligatorio: un `.pt` comprometido equivale
+        a ejecución remota de código al deserializarse.
+        """
+        expected = (getattr(settings, "YOLO_MODEL_SHA256", "") or "").strip().lower()
+        if expected:
+            actual = self._sha256(path)
+            if actual != expected:
+                raise RuntimeError(
+                    "YOLO model integrity check failed: sha256 no coincide con "
+                    "YOLO_MODEL_SHA256"
+                )
+            logger.info("YOLO model sha256 verificado")
+            return
+        if getattr(settings, "ENVIRONMENT", "development") == "production":
+            raise RuntimeError(
+                "YOLO_MODEL_SHA256 es obligatorio en production: fije el hash "
+                "del modelo antes de cargarlo con torch.load"
+            )
+
     def _download(self, dest: Path) -> bool:
+        if getattr(settings, "ENVIRONMENT", "development") == "production":
+            logger.error(
+                "Descarga automática de modelos YOLO deshabilitada en production; "
+                "coloque el artefacto en %s y fije YOLO_MODEL_SHA256",
+                MODEL_DIR,
+            )
+            return False
         try:
             logger.info("Descargando YOLOv8n desde ultralytics...")
             model = YOLO("yolov8n.pt")

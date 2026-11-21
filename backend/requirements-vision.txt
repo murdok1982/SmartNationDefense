@@ -1,0 +1,12 @@
+# Dependencias opcionales de Computer Vision (YOLO/Ultralytics).
+#
+# SEC-FIX-006: torch 2.5.1 tenía CVE-2025-32434 (CRITICAL, torch.load RCE).
+# Se retira del runtime base de la API: sólo se instala en el despliegue de
+# visión cuando se necesita inferencia local.
+#
+#   pip install -r backend/requirements-vision.txt
+#
+# Requiere torch>=2.6.0 y el hash del modelo debe fijarse vía
+# YOLO_MODEL_SHA256 (obligatorio en production).
+torch>=2.6.0
+ultralytics>=8.3.0

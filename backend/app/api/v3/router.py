@@ -50,11 +50,13 @@ async def analyze_satellite(
         }
     except RuntimeError as e:
         raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"URL rechazada: {e}")
     except httpx.HTTPError as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Error descargando imagen: {e}")
-    except Exception as e:
+    except Exception:
         logger.exception("analyze-satellite error")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error interno en analisis de imagen")
 
 
 @router.post("/vision/detect-changes")
@@ -69,11 +71,13 @@ async def detect_changes(
         return {"changes": [c.model_dump() for c in changes], "count": len(changes)}
     except RuntimeError as e:
         raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"URL rechazada: {e}")
     except httpx.HTTPError as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Error descargando imágenes: {e}")
-    except Exception as e:
+    except Exception:
         logger.exception("detect-changes error")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error interno en deteccion de cambios")
 
 
 @router.post("/vision/drone-frame")
@@ -95,11 +99,14 @@ async def drone_frame(
     import cv2
     frame: Optional[np.ndarray] = None
     if frame_url:
+        from app.services.osint.tools.web_tools import safe_http_get
         try:
-            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
-                resp = await client.get(frame_url)
+            async with httpx.AsyncClient(timeout=30.0, follow_redirects=False) as client:
+                resp = await safe_http_get(client, frame_url, max_redirects=3)
                 resp.raise_for_status()
                 data = resp.content
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=f"URL bloqueada: {e}")
         except httpx.HTTPError as e:
             raise HTTPException(status_code=502, detail=f"Error descargando frame: {e}")
         arr = np.frombuffer(data, dtype=np.uint8)

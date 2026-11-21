@@ -53,6 +53,22 @@ class Settings(BaseSettings):
     MULTI_TENANT: bool = Field(default=False)
     DEFAULT_TENANT_ID: str = Field(default="default")
 
+    # Postura ante fallos del backend de seguridad (Redis). Cadena vacía =
+    # derivar del entorno: development -> "open", staging/production -> "closed".
+    # "closed" aborta el arranque si Redis no responde y devuelve 503 cuando un
+    # control (rate-limit, revocación de JWT) no puede consultar su estado.
+    SECURITY_FAIL_MODE: str = Field(default="", pattern="^(open|closed)?$")
+    # Peers autorizados a aportar X-Real-IP/X-Forwarded-For (proxy inverso).
+    TRUSTED_PROXIES: str = Field(
+        default="127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+    )
+
+    @property
+    def security_fail_closed(self) -> bool:
+        if self.SECURITY_FAIL_MODE:
+            return self.SECURITY_FAIL_MODE == "closed"
+        return self.ENVIRONMENT in ("staging", "production")
+
     RATE_LIMIT_DEFAULT: int = Field(default=60, ge=1)
 
     GRAFANA_ADMIN_USER: str = Field(default="admin")
@@ -61,6 +77,8 @@ class Settings(BaseSettings):
     AES_KEY: str = Field(default="")
     JWS_PUBLIC_KEY: Optional[str] = Field(default=None)
     STATE_GRADE_MODE: bool = Field(default=False)
+    # SEC-FIX-006: hash sha256 del artefacto YOLO; obligatorio en production.
+    YOLO_MODEL_SHA256: str = Field(default="")
     API_V1_STR: str = Field(default="/api/v1")
     SIGNING_PUBLIC_KEY_PATH: Optional[str] = Field(default=None)
     OPERATOR_API_KEYS: str = Field(default="{}")
@@ -95,6 +113,8 @@ class Settings(BaseSettings):
                 "cambia-esto-por-una-cadena-aleatoria-de-64-caracteres-hex",
                 "admin123",
                 "Demo2024!",
+                # Clave publicada historicamente en .env.example (SEC-FIX-003)
+                "32b20a199ec709f1ee76a7db2b3107d164f441cee941ed8434bc8b45b3553cea",
             ) or "change" in self.SECRET_KEY.lower():
                 errors.append("Insecure or default SECRET_KEY.")
             if "sesis:sesis@" in self.DATABASE_URL or "change" in self.DATABASE_URL.lower():
@@ -105,8 +125,13 @@ class Settings(BaseSettings):
                 errors.append("GRAFANA_ADMIN_PASSWORD is required in production and cannot be default.")
             if not self.MFA_ENCRYPTION_KEY or len(self.MFA_ENCRYPTION_KEY) != 64:
                 errors.append("MFA_ENCRYPTION_KEY (64 hex characters) is required in production.")
-            if self.ADMIN_INITIAL_PASSWORD in ("admin123", "Demo2024!", "change-me-in-production"):
-                errors.append("Insecure ADMIN_INITIAL_PASSWORD.")
+            if (
+                not self.ADMIN_INITIAL_PASSWORD
+                or len(self.ADMIN_INITIAL_PASSWORD) < 10
+                or "change" in self.ADMIN_INITIAL_PASSWORD.lower()
+                or self.ADMIN_INITIAL_PASSWORD in ("admin123", "Demo2024!", "change-me-in-production")
+            ):
+                errors.append("Insecure or missing ADMIN_INITIAL_PASSWORD.")
             if errors:
                 raise ValueError(
                     "Production configuration incomplete. Refusing to start:\n- "

@@ -8,11 +8,11 @@ alembic==1.14.0
 redis==5.2.1
 nats-py==2.9.0
 httpx==0.28.1
-python-multipart==0.0.18
-python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.9.3
+python-multipart==0.0.34
+python-jose[cryptography]==3.5.0
+passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
-cryptography==44.0.0
+cryptography==50.0.2
 celery==5.4.0
 tenacity==9.0.0
 prometheus-client==0.21.1
@@ -22,19 +22,17 @@ ollama==0.4.7
 jsonschema==4.23.0
 pyotp==2.9.0
 beautifulsoup4==4.12.2
-lxml==5.3.0
+lxml==6.1.3
 duckduckgo_search==7.5.0
 trafilatura==2.0.0
 
-# Computer Vision
+# Computer Vision (núcleo ligero; torch/ultralytics viven en requirements-vision.txt)
 opencv-python-headless==4.10.0.84
 numpy==2.2.1
 
 # Optional modules
 # openai==1.60.0
 # Pillow==11.1.0
-ultralytics==8.3.0
-torch==2.5.1
 # sentence-transformers==3.4.0
 # pdfkit==1.0.0
 

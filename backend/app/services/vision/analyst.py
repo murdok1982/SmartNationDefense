@@ -5,11 +5,16 @@ import tempfile
 from typing import List, Optional
 from pathlib import Path
 
+import httpx
 from pydantic import BaseModel, Field
 
+from app.services.osint.tools.web_tools import safe_http_get
 from app.services.vision.yolo_loader import YOLOLoader
 
 logger = logging.getLogger(__name__)
+
+# Limite duro de descarga: evita DoS por respuestas gigantes (SEC-FIX-002).
+_MAX_DOWNLOAD_BYTES = 25 * 1024 * 1024
 
 
 class Detection(BaseModel):
@@ -48,10 +53,18 @@ class SatelliteAnalyst:
         self._yolo_model = None
 
     async def _download_image(self, url: str) -> str:
-        import httpx
-        async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
-            resp = await client.get(url)
+        """Descarga una imagen con proteccion SSRF (IP pinning) y limite de tamano.
+
+        Antes de esta correccion se usaba ``httpx.AsyncClient(follow_redirects=True)``
+        directo, permitiendo SSRF hacia metadatos cloud / servicios internos
+        (SEC-FIX-002). Ahora toda descarga pasa por ``safe_http_get``, que valida
+        cada salto de redireccion, fija la IP resuelta y revalida el peer.
+        """
+        async with httpx.AsyncClient(timeout=60.0, follow_redirects=False) as client:
+            resp = await safe_http_get(client, url, max_redirects=3)
             resp.raise_for_status()
+            if len(resp.content) > _MAX_DOWNLOAD_BYTES:
+                raise ValueError("Imagen demasiado grande (limite 25MB)")
             ext = ".jpg"
             fname = f"{uuid.uuid4().hex}{ext}"
             path = str(self.temp_dir / fname)

@@ -116,6 +116,18 @@ async def _setup_database():
         await conn.run_sync(Base.metadata.drop_all)
 
 
+@pytest.fixture(autouse=True)
+def _reset_fake_redis():
+    """Aísla el estado Redis entre tests (rate-limit/lockout/circuit breaker).
+
+    Sin esto, un test podía heredar contadores de otro y el orden de ejecución
+    alteraba el resultado (falso verde/rojo).
+    """
+    fake_redis._data.clear()
+    fake_redis._zsets.clear()
+    yield
+
+
 @pytest.fixture
 async def db_session(_setup_database) -> AsyncGenerator[AsyncSession, None]:
     async with test_async_session() as session:

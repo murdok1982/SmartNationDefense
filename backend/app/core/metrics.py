@@ -46,6 +46,12 @@ APP_INFO = Gauge(
     ["version", "environment"],
 )
 
+SECURITY_FAIL_OPEN_TOTAL = Counter(
+    "sesis_security_fail_open_total",
+    "Controles de seguridad que no pudieron consultar Redis y fallaron abiertos.",
+    ["component"],
+)
+
 
 # Módulos observados por los dashboards de FASE 6.
 OBSERVED_MODULES = (
@@ -74,3 +80,7 @@ def mark_modules_up(version: str, environment: str) -> None:
 
 def record_security_event(event: str, module: str = "security") -> None:
     SECURITY_EVENTS_TOTAL.labels(event=event, module=module).inc()
+
+
+def record_fail_open(component: str) -> None:
+    SECURITY_FAIL_OPEN_TOTAL.labels(component=component).inc()
