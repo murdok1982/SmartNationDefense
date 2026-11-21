@@ -20,7 +20,8 @@ x-api-environment: &api-environment
   JWT_ACCESS_TOKEN_EXPIRE_MINUTES: ${JWT_ACCESS_TOKEN_EXPIRE_MINUTES:-15}
   JWT_REFRESH_TOKEN_EXPIRE_DAYS: ${JWT_REFRESH_TOKEN_EXPIRE_DAYS:-7}
   MFA_ENABLED: ${MFA_ENABLED:-true}
-  ADMIN_INITIAL_PASSWORD: ${ADMIN_INITIAL_PASSWORD:-SESIS_ADMIN_2026_Str0ng_P4ss!}
+  # NUNCA hardcodee passwords aquí: ADMIN_INITIAL_PASSWORD debe definirse en .env
+  ADMIN_INITIAL_PASSWORD: ${ADMIN_INITIAL_PASSWORD:?ADMIN_INITIAL_PASSWORD debe definirse explicitamente en .env}
 
 services:
   # ------------------------------------------------------------------
@@ -154,6 +155,12 @@ services:
       - ./backend:/app
       - ${FERNET_KEY_PATH:-./fernet.key}:/app/fernet.key:ro
     command: celery -A app.workers.celery_app worker --loglevel=info
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.workers.celery_app inspect ping -d celery@$$HOSTNAME || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
     logging: *default-logging
 
   ollama:
@@ -193,13 +200,41 @@ services:
       start_period: 30s
     logging: *default-logging
 
+  alertmanager:
+    image: prom/alertmanager:latest
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--config.expand-env"
+      - "--storage.path=/alertmanager"
+    environment:
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-http://localhost:9/disabled}
+      SLACK_PAGER_WEBHOOK_URL: ${SLACK_PAGER_WEBHOOK_URL:-http://localhost:9/disabled}
+      SLACK_CHANNEL: ${SLACK_CHANNEL:-#sesis-alerts}
+      SLACK_CRITICAL_CHANNEL: ${SLACK_CRITICAL_CHANNEL:-#sesis-critical}
+    volumes:
+      - ./infra/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanagerdata:/alertmanager
+    ports:
+      - "127.0.0.1:9093:9093"
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:9093/-/healthy || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    logging: *default-logging
+
   prometheus:
     image: prom/prometheus:latest
     volumes:
       - ./infra/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./infra/alertmanager/alerts.yml:/etc/prometheus/rules/alerts.yml:ro
       - promdata:/prometheus
     ports:
       - "127.0.0.1:9090:9090"
+    depends_on:
+      alertmanager:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:9090/-/healthy || exit 1"]
       interval: 15s
@@ -233,3 +268,4 @@ volumes:
   ollamadata:
   promdata:
   grafanadata:
+  alertmanagerdata:

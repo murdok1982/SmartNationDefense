@@ -405,6 +405,8 @@ async def login(
 
     if await BruteForceProtector.is_locked(body.username, path):
         remaining = await BruteForceProtector.get_remaining_attempts(body.username, path)
+        from app.core.metrics import record_security_event
+        record_security_event("brute_force_lockout", "auth")
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=f"Account temporarily locked. Remaining attempts: {remaining}",
@@ -416,6 +418,8 @@ async def login(
     if not user or not verify_password(body.password, user.hashed_password):
         await BruteForceProtector.record_failure(body.username, client_ip, path)
         remaining = await BruteForceProtector.get_remaining_attempts(body.username, path)
+        from app.core.metrics import record_security_event
+        record_security_event("auth_failure", "auth")
 
         await _log_audit(
             user_id="unknown",
@@ -425,8 +429,8 @@ async def login(
             ip=client_ip,
             success=False,
             error="Invalid credentials",
-        db_session=db,
-    )
+            db_session=db,
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Invalid credentials. Remaining attempts: {remaining}",
@@ -444,8 +448,8 @@ async def login(
             resource_id=user.id,
             ip=client_ip,
             details={"step": "password_ok_mfa_pending"},
-        db_session=db,
-    )
+            db_session=db,
+        )
         return LoginResponse(mfa_required=True, mfa_ticket=ticket)
 
     return await _issue_tokens_for(user, request, db, client_ip)

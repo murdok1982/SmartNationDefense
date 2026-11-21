@@ -242,6 +242,8 @@ def require_clearance(min_level: str):
         subj = CLEARANCE_ORDER.get(principal.get("clearance", "OPEN"), 0)
         need = CLEARANCE_ORDER.get(min_level, 0)
         if subj < need:
+            from app.core.metrics import record_security_event
+            record_security_event("clearance_denied", "security")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"clearance < {min_level}",

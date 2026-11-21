@@ -1,14 +1,24 @@
 # -*- coding: utf-8 -*-
 import asyncio
 import logging
+import time
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+from starlette.requests import Request
+from starlette.responses import Response
 
 from app.core.config import settings, get_settings
-from app.core.security import get_current_user
+from app.core.metrics import (
+    HTTP_ERRORS_TOTAL,
+    HTTP_REQUEST_DURATION,
+    HTTP_REQUESTS_TOTAL,
+    mark_modules_up,
+)
+from app.core.security import get_current_user, require_clearance
 from app.db.session import engine, check_db_connected
 from app.core.events import event_bus
 
@@ -18,6 +28,7 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting SESIS-FEDERATION...")
+    mark_modules_up(app.version, settings.ENVIRONMENT)
 
     # Database
     await check_db_connected()
@@ -87,8 +98,52 @@ from app.db.redis_pool import get_redis_client
 app.add_middleware(RateLimitMiddleware, redis_client=get_redis_client())
 app.add_middleware(AuthMiddleware)
 
+
+def _route_label(request: Request) -> str:
+    """Etiqueta de baja cardinalidad: plantilla de ruta, no URL cruda."""
+    route = request.scope.get("route")
+    return getattr(route, "path", "unmatched")
+
+
+@app.middleware("http")
+async def prometheus_metrics_middleware(request: Request, call_next):
+    """Instrumenta cada petición para los dashboards de FASE 6."""
+    if request.url.path == "/metrics":
+        return await call_next(request)
+
+    started = time.perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception:
+        HTTP_REQUESTS_TOTAL.labels(
+            method=request.method, path=_route_label(request), status="500"
+        ).inc()
+        raise
+    elapsed = time.perf_counter() - started
+    path = _route_label(request)
+
+    HTTP_REQUESTS_TOTAL.labels(
+        method=request.method, path=path, status=str(response.status_code)
+    ).inc()
+    HTTP_REQUEST_DURATION.labels(method=request.method, path=path).observe(elapsed)
+    if response.status_code >= 400:
+        HTTP_ERRORS_TOTAL.labels(path=path, status=str(response.status_code)).inc()
+    return response
+
+
+@app.get("/metrics", include_in_schema=False)
+async def prometheus_metrics():
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
 # Dependencia de autenticacion aplicada a todos los routers excepto health y auth
 _AUTH_DEPS = [Depends(get_current_user)]
+
+# Defensa en profundidad: autenticacion + clearance minimo RESTRICTED a nivel de
+# router. Los routers que ya declaran `require_clearance` por handler conservan
+# su nivel (p. ej. CONFIDENTIAL); este minimo evita endpoints "solo autenticados"
+# que expongan datos clasificados (ADR-010).
+_CLEARANCE_DEPS = [Depends(get_current_user), Depends(require_clearance("RESTRICTED"))]
 
 # ── Module Routers ──
 
@@ -117,41 +172,41 @@ app.include_router(c2.router, prefix="/api/v2/c2", tags=["C2 v2"], dependencies=
 
 # sesis-satellite (from AEGIS-IMINT)
 from app.api.satellite.router import router as satellite_router
-app.include_router(satellite_router, prefix="/api/v1/satellite", tags=["Satellite", "AEGIS-IMINT"], dependencies=_AUTH_DEPS)
+app.include_router(satellite_router, prefix="/api/v1/satellite", tags=["Satellite", "AEGIS-IMINT"], dependencies=_CLEARANCE_DEPS)
 
 # sesis-osint (from Atalaya)
 from app.api.osint.router import router as osint_router
-app.include_router(osint_router, prefix="/api/v1/osint", tags=["OSINT", "Atalaya"], dependencies=_AUTH_DEPS)
+app.include_router(osint_router, prefix="/api/v1/osint", tags=["OSINT", "Atalaya"], dependencies=_CLEARANCE_DEPS)
 
 # sesis-intel (from Global-Intelligence)
 from app.api.intel.router import router as intel_router
-app.include_router(intel_router, prefix="/api/v1/intel", tags=["Intelligence", "Global-Intel"], dependencies=_AUTH_DEPS)
+app.include_router(intel_router, prefix="/api/v1/intel", tags=["Intelligence", "Global-Intel"], dependencies=_CLEARANCE_DEPS)
 
 # sesis-agents (from SpyManager)
 from app.api.agents.router import router as agents_router
-app.include_router(agents_router, prefix="/api/v1/agents", tags=["Agents", "SpyManager"], dependencies=_AUTH_DEPS)
+app.include_router(agents_router, prefix="/api/v1/agents", tags=["Agents", "SpyManager"], dependencies=_CLEARANCE_DEPS)
 
 # Extra agent API modules
 from app.api.agents import intel_api, mesh_api, mobile_api, multimodal_api, steganography_api, threat_api, wearable_api
-app.include_router(intel_api.router, prefix="/api/v1/agents/intel", tags=["Agents", "Intel"], dependencies=_AUTH_DEPS)
-app.include_router(mesh_api.router, prefix="/api/v1/agents/mesh", tags=["Agents", "Mesh"], dependencies=_AUTH_DEPS)
-app.include_router(mobile_api.router, prefix="/api/v1/agents/mobile", tags=["Agents", "Mobile"], dependencies=_AUTH_DEPS)
-app.include_router(multimodal_api.router, prefix="/api/v1/agents/multimodal", tags=["Agents", "Multimodal"], dependencies=_AUTH_DEPS)
-app.include_router(steganography_api.router, prefix="/api/v1/agents/stego", tags=["Agents", "Steganography"], dependencies=_AUTH_DEPS)
-app.include_router(threat_api.router, prefix="/api/v1/agents/threat", tags=["Agents", "Threat"], dependencies=_AUTH_DEPS)
-app.include_router(wearable_api.router, prefix="/api/v1/agents/wearable", tags=["Agents", "Wearable"], dependencies=_AUTH_DEPS)
+app.include_router(intel_api.router, prefix="/api/v1/agents/intel", tags=["Agents", "Intel"], dependencies=_CLEARANCE_DEPS)
+app.include_router(mesh_api.router, prefix="/api/v1/agents/mesh", tags=["Agents", "Mesh"], dependencies=_CLEARANCE_DEPS)
+app.include_router(mobile_api.router, prefix="/api/v1/agents/mobile", tags=["Agents", "Mobile"], dependencies=_CLEARANCE_DEPS)
+app.include_router(multimodal_api.router, prefix="/api/v1/agents/multimodal", tags=["Agents", "Multimodal"], dependencies=_CLEARANCE_DEPS)
+app.include_router(steganography_api.router, prefix="/api/v1/agents/stego", tags=["Agents", "Steganography"], dependencies=_CLEARANCE_DEPS)
+app.include_router(threat_api.router, prefix="/api/v1/agents/threat", tags=["Agents", "Threat"], dependencies=_CLEARANCE_DEPS)
+app.include_router(wearable_api.router, prefix="/api/v1/agents/wearable", tags=["Agents", "Wearable"], dependencies=_CLEARANCE_DEPS)
 
 # sesis-tactical (OPORD, Wargaming, Joint Fires, BDA, PSYOPS)
 from app.api.tactical import opord, wargaming, joint_fires, bda, psyops
-app.include_router(opord.router, prefix="/api/v1/tactical/opord", tags=["Tactical", "OPORD"], dependencies=_AUTH_DEPS)
-app.include_router(wargaming.router, prefix="/api/v1/tactical/wargaming", tags=["Tactical", "Wargaming"], dependencies=_AUTH_DEPS)
-app.include_router(joint_fires.router, prefix="/api/v1/tactical/fires", tags=["Tactical", "Joint Fires"], dependencies=_AUTH_DEPS)
-app.include_router(bda.router, prefix="/api/v1/tactical/bda", tags=["Tactical", "BDA"], dependencies=_AUTH_DEPS)
-app.include_router(psyops.router, prefix="/api/v1/tactical/psyops", tags=["Tactical", "PSYOPS"], dependencies=_AUTH_DEPS)
+app.include_router(opord.router, prefix="/api/v1/tactical/opord", tags=["Tactical", "OPORD"], dependencies=_CLEARANCE_DEPS)
+app.include_router(wargaming.router, prefix="/api/v1/tactical/wargaming", tags=["Tactical", "Wargaming"], dependencies=_CLEARANCE_DEPS)
+app.include_router(joint_fires.router, prefix="/api/v1/tactical/fires", tags=["Tactical", "Joint Fires"], dependencies=_CLEARANCE_DEPS)
+app.include_router(bda.router, prefix="/api/v1/tactical/bda", tags=["Tactical", "BDA"], dependencies=_CLEARANCE_DEPS)
+app.include_router(psyops.router, prefix="/api/v1/tactical/psyops", tags=["Tactical", "PSYOPS"], dependencies=_CLEARANCE_DEPS)
 
 # sesis-sensors (IoT Mesh)
 from app.api.agents import sensor_mesh_api
-app.include_router(sensor_mesh_api.router, prefix="/api/v1/agents/sensors", tags=["Agents", "Sensors"], dependencies=_AUTH_DEPS)
+app.include_router(sensor_mesh_api.router, prefix="/api/v1/agents/sensors", tags=["Agents", "Sensors"], dependencies=_CLEARANCE_DEPS)
 
 # sesis-auth (unified)
 from app.api.auth import router as auth_router
@@ -199,11 +254,11 @@ app.include_router(planning.router, prefix="/api/v1/planning", tags=["Planning"]
 
 # sesis-maven (Computer Vision + Fusion Multisensor)
 from app.api.v3.router import router as maven_router
-app.include_router(maven_router, prefix="/api/v3", tags=["Maven"], dependencies=_AUTH_DEPS)
+app.include_router(maven_router, prefix="/api/v3", tags=["Maven"], dependencies=_CLEARANCE_DEPS)
 
 # sesis-coa-v3 (Cursos de Accion Algoritmicos — Palantir Gotham)
 from app.api.v3.coa import router as coa_v3_router
-app.include_router(coa_v3_router, prefix="/api/v3", dependencies=_AUTH_DEPS)
+app.include_router(coa_v3_router, prefix="/api/v3", dependencies=_CLEARANCE_DEPS)
 
 
 @app.get("/")

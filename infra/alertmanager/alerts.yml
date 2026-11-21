@@ -1,0 +1,91 @@
+groups:
+  - name: sesis-availability
+    interval: 30s
+    rules:
+      - alert: SesisApiDown
+        expr: up{job="sesis-api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: api
+        annotations:
+          summary: "API SESIS no scrapeable"
+          description: "Prometheus no puede leer /metrics de api:8000 desde hace 2 minutos."
+
+      - alert: SesisModuleDown
+        expr: sesis_module_up == 0
+        for: 5m
+        labels:
+          severity: warning
+          service: "{{ $labels.module }}"
+        annotations:
+          summary: "Módulo {{ $labels.module }} marcado caído"
+          description: "sesis_module_up{module=\"{{ $labels.module }}\"} lleva 5 minutos en 0."
+
+  - name: sesis-performance
+    interval: 30s
+    rules:
+      - alert: SesisHighLatencyP95
+        expr: histogram_quantile(0.95, sum(rate(sesis_http_request_duration_seconds_bucket[5m])) by (le)) > 1.5
+        for: 5m
+        labels:
+          severity: warning
+          service: api
+        annotations:
+          summary: "Latencia p95 > 1.5s"
+          description: "El percentil 95 de latencia HTTP supera 1.5s durante 5 minutos."
+
+      - alert: SesisHighServerErrorRate
+        expr: >
+          sum(rate(sesis_http_requests_total{status=~"5.."}[5m]))
+          / clamp_min(sum(rate(sesis_http_requests_total[5m])), 0.001) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          service: api
+        annotations:
+          summary: "Tasa de errores 5xx > 5%"
+          description: "Más del 5% de las peticiones terminan en 5xx durante 5 minutos."
+
+  - name: sesis-security
+    interval: 30s
+    rules:
+      - alert: SesisClearanceDenialsSpike
+        expr: sum(increase(sesis_http_requests_total{status="403"}[10m])) > 50
+        for: 0m
+        labels:
+          severity: warning
+          service: security
+        annotations:
+          summary: "Pico de denegaciones de clearance (403)"
+          description: "Más de 50 respuestas 403 en 10 minutos: posible sondeo de IDOR o elevación de privilegios."
+
+      - alert: SesisAuthFailureSpike
+        expr: sum(increase(sesis_http_requests_total{status="401"}[10m])) > 100
+        for: 0m
+        labels:
+          severity: warning
+          service: auth
+        annotations:
+          summary: "Pico de fallos de autenticación (401)"
+          description: "Más de 100 respuestas 401 en 10 minutos: posible ataque de fuerza bruta distribuido."
+
+      - alert: SesisBruteForceLockout
+        expr: increase(sesis_security_events_total{event="brute_force_lockout"}[10m]) > 0
+        for: 0m
+        labels:
+          severity: high
+          service: auth
+        annotations:
+          summary: "Cuenta bloqueada por fuerza bruta"
+          description: "BruteForceProtector activó un lockout en los últimos 10 minutos."
+
+      - alert: SesisClearanceDeniedEvent
+        expr: increase(sesis_security_events_total{event="clearance_denied"}[10m]) > 20
+        for: 0m
+        labels:
+          severity: high
+          service: security
+        annotations:
+          summary: "Denegaciones de clearance recurrentes"
+          description: "Más de 20 eventos clearance_denied en 10 minutos."

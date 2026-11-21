@@ -59,6 +59,9 @@ class FakeRedis:
 
     async def delete(self, key: str) -> None:
         self._data.pop(key, None)
+        # Redis borra la clave sea cual sea su tipo: si no se limpian los
+        # ZSET, record_success() dejaría intentos fantasma (test-double falso).
+        self._zsets.pop(key, None)
 
     async def zremrangebyscore(self, key: str, min_val, max_val) -> None:
         if key in self._zsets:

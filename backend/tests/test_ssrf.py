@@ -99,3 +99,33 @@ class TestSSRFPinning:
             mock_loop.return_value.getaddrinfo = fake_gai
             with pytest.raises(ValueError, match="SSRF protection"):
                 await web_tools._resolve_validated_ips("https://internal.example.com/")
+
+
+class TestSSRFIPv6:
+    """Cobertura IPv6 y direcciones mapeadas IPv4 (TASK-037)."""
+
+    def test_rejects_ipv6_loopback(self):
+        assert _is_safe_url("http://[::1]/") is False
+        assert _is_safe_url("http://[::1]:8000/admin") is False
+
+    def test_rejects_ipv6_unique_local(self):
+        assert _is_safe_url("http://[fd00::1]/") is False
+        assert _is_safe_url("http://[fc00::abcd]/") is False
+
+    def test_rejects_ipv6_link_local(self):
+        assert _is_safe_url("http://[fe80::1]/") is False
+
+    def test_rejects_ipv4_mapped_ipv6_loopback(self):
+        assert _is_safe_url("http://[::ffff:127.0.0.1]/") is False
+        assert _is_safe_url("http://[::ffff:10.0.0.1]/") is False
+
+    def test_accepts_public_ipv6(self):
+        assert _is_safe_url("https://[2606:4700:4700::1111]/") is True
+
+    async def test_resolve_validated_ips_rejects_ipv6_resolution(self):
+        with patch("asyncio.get_running_loop") as mock_loop:
+            fake_gai = AsyncMock(return_value=[(0, 0, 0, "", ("::1", 443, 0, 0))])
+            mock_loop.return_value.getaddrinfo = fake_gai
+            with pytest.raises(ValueError, match="SSRF protection"):
+                await web_tools._resolve_validated_ips("https://internal.example.com/")
+
